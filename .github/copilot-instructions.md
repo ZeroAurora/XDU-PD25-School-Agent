@@ -14,6 +14,8 @@ AI-powered campus activity planning assistant helping students manage school lif
 
 **Key Domain Entities**: Student profile, campus activities, schedules/calendars, recommendations, chat interactions
 
+**Display Language**: Simplified Chinese（简体中文）
+
 ## Project Overview
 React 19 SPA for school agent system using TanStack Router (file-based), React Query, Ant Design X, and Tailwind CSS v4. Built with Vite and Bun runtime.
 
@@ -108,3 +110,9 @@ src/
 - Use Ant Design X components: `<Conversations>` for chat history, `<Sender>` for input
 - Structure messages with `<Bubble>` for user/assistant messages
 - Implement `<Prompts>` for quick-action suggestions (e.g., "Find events this week")
+
+## External Resources
+
+Always use context7 when I need code generation, setup or configuration steps, or library/API documentation.
+
+This means you should automatically use the Context7 MCP tools to resolve library id and get library docs without me having to explicitly ask.
