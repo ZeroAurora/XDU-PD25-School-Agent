@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "McroDesign Backend v2",
+    "_postman_id": "mcrodesign-backend-collection-v2",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Ping",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/health/ping",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "health",
+            "ping"
+          ]
+        }
+      }
+    },
+    {
+      "name": "RAG Ingest",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[{\"id\": \"evt-1\", \"text\": \"11月8日 周六 14:00 在图书馆报告厅举办 AI 学术沙龙，主题为大模型安全与RAG最佳实践。\", \"metadata\": {\"title\": \"AI学术沙龙\", \"date\": \"2025-11-08\", \"place\": \"图书馆报告厅\"}, \"backend\": \"bge\"}, {\"id\": \"evt-2\", \"text\": \"11月9日 周日 19:00 创业俱乐部路演，邀请三位校友分享 AI 创业经历，开放问答。\", \"metadata\": {\"title\": \"创业俱乐部路演\", \"date\": \"2025-11-09\", \"place\": \"创新中心\"}, \"backend\": \"bge\"}, {\"id\": \"evt-3\", \"text\": \"本周五晚 18:30 计算机学院举办开源之夜，内容包括Git入门与贡献流程。\", \"metadata\": {\"title\": \"开源之夜\", \"weekday\": \"Fri\", \"place\": \"计院A101\"}, \"backend\": \"bge\"}]"
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/rag/ingest",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "rag",
+            "ingest"
+          ]
+        }
+      }
+    },
+    {
+      "name": "RAG Search",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/rag/search?q=AI&backend=bge&k=5",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "rag",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "AI"
+            },
+            {
+              "key": "backend",
+              "value": "bge"
+            },
+            {
+              "key": "k",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Agent Chat",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"message\": \"周末有什么AI活动？\", \"backend\": \"bge\", \"k\": 5, \"extra_context\": \"\"}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/agent/chat",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "agent",
+            "chat"
+          ]
+        }
+      }
+    }
+  ]
+}
