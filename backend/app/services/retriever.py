@@ -97,6 +97,10 @@ class ChromaRetriever:
             for id_, doc, meta, dist in zip(ids, docs, metas, dists)
         ]
 
+    async def delete(self, ids: list[str]):
+        """Delete documents by IDs."""
+        self.collection.delete(ids=ids)
+
     async def cleanup(self):
         """清理资源"""
         if self._embedder is not None:

@@ -1,13 +1,11 @@
+import { StyleProvider } from "@ant-design/cssinjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { ConfigProvider } from "antd";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
-
-// Ant Design React 19 Patch
-import "@ant-design/v5-patch-for-react-19";
 
 import "./styles.css";
 
@@ -37,9 +35,13 @@ if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
+      <StyleProvider layer>
+        <ConfigProvider>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ConfigProvider>
+      </StyleProvider>
     </StrictMode>,
   );
 }

@@ -54,6 +54,12 @@ XDU-PD25-School-Agent/
 │   │   ├── schedule.tsx          # Schedule management page
 │   │   └── profile.tsx           # User profile page
 │   ├── components/               # Reusable components
+│   │   └── admin/                # Admin dashboard components
+│   │       ├── BatchImportCard.tsx   # Batch import main card
+│   │       ├── FileUploadArea.tsx    # File upload area
+│   │       ├── ImportConfig.tsx      # Import configuration
+│   │       ├── ImportProgress.tsx    # Progress display
+│   │       └── useBatchImport.ts     # Batch import hook
 │   ├── styles.css                # Global styles
 │   └── routeTree.gen.ts          # TanStack Router generated file
 │
@@ -64,9 +70,9 @@ XDU-PD25-School-Agent/
 │   │   ├── deps.py               # Dependency injection
 │   │   ├── routers/              # API route handlers
 │   │   │   ├── health.py         # Health check endpoints
-│   │   │   ├── rag.py            # RAG operations (ingest/search)
+│   │   │   ├── schedule.py       # Schedule CRUD with RAG integration
 │   │   │   ├── agent.py          # Agent chat endpoint
-│   │   │   └── debug.py          # Debug and maintenance endpoints
+│   │   │   └── debug.py          # Debug, RAG ingest/search, and maintenance endpoints
 │   │   ├── services/             # Business logic
 │   │   │   ├── agent_core.py     # Core agent logic with RAG
 │   │   │   ├── llm.py            # OpenAI LLM integration
@@ -140,25 +146,34 @@ class Settings(BaseModel):
 |----------|--------|-------------|
 | `/api/health/ping` | GET | Returns `{"ok": True}` |
 
-### RAG Operations
+### Schedule Operations
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/rag/ingest` | POST | Ingest documents into vector store |
-| `/api/rag/search` | GET | Search for relevant documents |
+| `/api/schedule/events` | GET | List all events |
+| `/api/schedule/events` | POST | Create a new event |
+| `/api/schedule/events/{id}` | GET | Get a single event |
+| `/api/schedule/events/{id}` | PUT | Update an event |
+| `/api/schedule/events/{id}` | DELETE | Delete an event |
+| `/api/schedule/search` | GET | Search events using RAG |
+| `/api/schedule/seed` | POST | Seed sample events |
+| `/api/schedule/clear` | DELETE | Clear all events |
 
-#### Ingest Request Body
+#### Event Request/Response Model
 ```typescript
-{
-  text: string;      // Document text
-  id: string;        // Unique document ID
-  metadata?: object; // Optional metadata (title, date, place, etc.)
+interface ScheduleEvent {
+  id: string;
+  title: string;
+  date: string;        // Format: YYYY-MM-DD
+  startTime: string;   // Format: HH:mm
+  endTime: string;
+  location?: string;
+  type: 'course' | 'activity' | 'exam' | 'meeting' | 'announcement';
+  description?: string;
 }
 ```
 
-#### Search Query Parameters
-- `q`: Search query string
-- `k`: Number of results (default: 5)
+**RAG Integration:** Schedule events are automatically ingested into the RAG vector store when created/updated, enabling AI-powered search and recommendations.
 
 ### Agent Chat
 
@@ -193,9 +208,18 @@ class Settings(BaseModel):
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/debug/emb` | GET | Get embedding dimension |
-| `/api/debug/ping_chroma` | GET | Test ChromaDB connection |
+| `/api/debug/ping_chroma` | GET | Test ChromaDB connection (enhanced) |
 | `/api/debug/reset` | DELETE | Reset ChromaDB collection |
 | `/api/debug/cleanup` | POST | Clean up embedding resources |
+| `/api/debug/rag/ingest` | POST | Ingest documents into RAG |
+| `/api/debug/rag/search` | GET | Search RAG vector store |
+| `/api/debug/stats` | GET | Collection statistics (document count, storage size) |
+| `/api/debug/documents` | GET | List all documents with pagination |
+| `/api/debug/documents/{id}` | GET | Get single document |
+| `/api/debug/documents/{id}` | DELETE | Delete single document |
+| `/api/debug/documents` | DELETE | Delete all documents |
+| `/api/debug/export` | GET | Export collection as JSON |
+| `/api/debug/batch_ingest` | POST | Batch import documents from JSON |
 
 ---
 
@@ -267,65 +291,98 @@ Home page with AI chat interface.
 - Welcome component with system introduction
 
 **Current Status:**
-- Mock response implementation (lines 28-39)
-- Needs integration with `/api/agent/chat` endpoint
+- Integrated with `/api/agent/chat` endpoint
+- Uses `fetch` to call the backend RAG-powered agent
+- **Source Context Display:** Expandable sources section showing RAG document references with metadata
+- Contexts are stored separately and linked to messages via IDs
 
 #### 2. [`src/routes/schedule.tsx`](src/routes/schedule.tsx:93)
 Schedule management with calendar view.
 
 **Features:**
 - Ant Design Calendar component
-- Event types: course, activity, exam, meeting
+- Event types: course, activity, exam, meeting, announcement
 - Date cell rendering with event badges
 - Event list by selected date
 - Color-coded event types
+- **API Integration:** Fetches events from `/api/schedule/events`
+- **RAG Search:** Events are searchable via the AI chat interface
+- **Event Editing:** Edit existing events via modal form
+- **Natural Language Search:** RAG-powered search for schedule events
+- **Quick Actions:** "Today" button, "Search Schedule" modal
+- **Event List:** Edit and delete buttons on each event
 
-**Data Model:**
-```typescript
-interface ScheduleEvent {
-  id: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location?: string;
-  type: 'course' | 'activity' | 'exam' | 'meeting';
-  description?: string;
-}
-```
+**Current Status:**
+- Integrated with `/api/schedule/events` endpoint
+- Uses `fetch` for CRUD operations (create, update, delete)
+- Automatic RAG ingestion on event changes
 
-#### 3. [`src/routes/profile.tsx`](src/routes/profile.tsx:8)
-User profile display with static demo data.
 
-#### 4. [`src/routes/__root.tsx`](src/routes/__root.tsx:14)
+
+#### 3. [`src/routes/admin.tsx`](src/routes/admin.tsx:1)
+Admin dashboard for RAG system management.
+
+**Features:**
+- **Enhanced Stats Dashboard:** Document count, storage size, vector dimension, health indicator
+- **Smart Search:** Search with history, autocomplete, quick access to recent searches
+- **Single Document Import:** Manual document import with metadata (title, date, place)
+- **Batch Import (Redesigned):** New step-by-step UI with:
+  - File upload area with drag-and-drop, file info display, and JSON validation
+  - Import configuration options (skip duplicates, validate format, dry-run mode)
+  - Real-time progress tracking with success/error feedback
+  - Template download for JSON format reference
+- **Document Management:** Paginated document table with preview, delete, and search
+- **Document Preview Modal:** View full document content with metadata
+- **Activity Logging:** Track all operations with timestamps and status
+- **Collection Export:** Export all documents as JSON
+- **Danger Zone:** Protected destructive operations (reset, delete all) with confirmations
+- **API Reference:** Quick copy of debug endpoint URLs
+
+**New Batch Import Components:**
+- [`src/components/admin/BatchImportCard.tsx`](src/components/admin/BatchImportCard.tsx:1) - Main batch import card combining all sub-components
+- [`src/components/admin/FileUploadArea.tsx`](src/components/admin/FileUploadArea.tsx:1) - File upload with drag-and-drop, JSON validation, and enhanced UI with drag states, status icons, and visual feedback
+- [`src/components/admin/ImportConfig.tsx`](src/components/admin/ImportConfig.tsx:1) - Import configuration panel (skip duplicates, validate format, dry-run)
+- [`src/components/admin/ImportProgress.tsx`](src/components/admin/ImportProgress.tsx:1) - Progress display with status indicators
+- [`src/components/admin/useBatchImport.ts`](src/components/admin/useBatchImport.ts:1) - Custom hook for batch import logic
+
+**Endpoints Used:**
+- `GET /api/debug/stats` - Collection statistics
+- `GET /api/debug/documents` - Document list with pagination
+- `GET /api/debug/documents/{id}` - Single document
+- `POST /api/debug/rag/ingest` - Single document ingest
+- `POST /api/debug/batch_ingest` - Batch document import
+- `GET /api/debug/rag/search` - Vector search
+- `GET /api/debug/export` - Export collection
+- `DELETE /api/debug/reset` - Reset collection
+- `DELETE /api/debug/documents` - Delete all documents
+
+#### 4. [`src/routes/profile.tsx`](src/routes/profile.tsx:1)
+User profile and settings management.
+
+**Features:**
+- **Profile Editing:** Editable user info (name, student ID, major, grade)
+- **Preferences:** Theme, default calendar view, notification settings
+- **Local Storage:** Profile and settings saved to localStorage
+- **About Section:** App version and technology stack info
+
+#### 5. [`src/routes/__root.tsx`](src/routes/__root.tsx:14)
 Root layout with navigation menu.
 
 **Navigation Items:**
 - Home (`/`) - Chat interface
 - Schedule (`/schedule`) - Calendar view
-- Profile (`/profile`) - User info
+- Admin (`/admin`) - RAG management dashboard
+- Profile (`/profile`) - User settings
 
 ---
 
 ## Data Models
 
-### RAG Document Format
-
-See [`backend/sample_data/sample_events.json`](backend/sample_data/sample_events.json:1):
-
-```json
-{
-  "id": "evt-1",
-  "text": "11月8日 周六 14:00 在图书馆报告厅举办 AI 学术沙龙...",
-  "metadata": {
-    "title": "AI学术沙龙",
-    "date": "2025-11-08",
-    "place": "图书馆报告厅"
-  }
-}
-```
-
 ### Schedule Event Model
+
+See [`backend/sample_data/sample_campus_events.json`](backend/sample_data/sample_campus_events.json:1) for sample data:
+
+See [`backend/sample_data/sample_campus_events.json`](backend/sample_data/sample_campus_events.json:1) for sample data:
 
 ```typescript
 {
@@ -335,9 +392,19 @@ See [`backend/sample_data/sample_events.json`](backend/sample_data/sample_events
   startTime: string;   // Format: HH:mm
   endTime: string;
   location?: string;
-  type: 'course' | 'activity' | 'exam' | 'meeting';
+  type: 'course' | 'activity' | 'exam' | 'meeting' | 'announcement';
   description?: string;
 }
+```
+
+**Backend Model:** The backend uses a Pydantic model with `EventType` enum:
+```python
+class EventType(str, Enum):
+    COURSE = "course"
+    ACTIVITY = "activity"
+    EXAM = "exam"
+    MEETING = "meeting"
+    ANNOUNCEMENT = "announcement"
 ```
 
 ---
@@ -384,9 +451,7 @@ python test_rag_api.py  # Direct execution
 ## Known Issues & Limitations
 
 ### Frontend
-1. **Chat endpoint not integrated** - [`src/routes/index.tsx`](src/routes/index.tsx:28-39) uses mock responses instead of calling `/api/agent/chat`
-2. **Static profile data** - [`src/routes/profile.tsx`](src/routes/profile.tsx:13-16) uses hardcoded demo data
-3. **Static schedule data** - [`src/routes/schedule.tsx`](src/routes/schedule.tsx:22-80) uses hardcoded sample events
+1. All major features have been integrated with backend APIs
 
 ### Backend
 1. **Dimension mismatch handling** - [`backend/app/services/retriever.py`](backend/app/services/retriever.py:56-72) deletes and recreates collection on dimension errors

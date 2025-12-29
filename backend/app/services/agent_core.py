@@ -35,8 +35,9 @@ async def chat_once(user_msg: str, k: int = 5, extra_context: str = "") -> dict:
         return {"reply": "请先输入你的问题。"}
 
     search_res = await retriever.query(user_msg, k=k)
-    docs = search_res.get("documents", [[]])[0] if search_res else []  # pyright: ignore[reportOptionalSubscript]
-    metas = search_res.get("metadatas", [[]])[0] if search_res else []  # pyright: ignore[reportOptionalSubscript]
+    # Extract documents and metadata from list format
+    docs = [r.get("document", "") for r in search_res] if search_res else []
+    metas = [r.get("metadata", {}) for r in search_res] if search_res else []
 
     context_lines = []
     for i, (d, m) in enumerate(zip(docs, metas)):

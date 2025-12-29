@@ -1,4 +1,8 @@
-import { CalendarOutlined, HomeOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  CalendarOutlined,
+  HomeOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
@@ -15,11 +19,9 @@ function RootLayout() {
   return (
     <Layout className="h-screen flex flex-col">
       <Header className="flex items-center px-6 flex-none">
-        <div className="text-white text-lg font-bold mr-10">
-          校园活动助手
-        </div>
+        <div className="text-white text-lg font-bold mr-10">校园活动助手</div>
         <Menu
-          theme="dark"
+          theme="dark"  
           mode="horizontal"
           defaultSelectedKeys={["home"]}
           className="flex-1 min-w-0"
@@ -42,7 +44,7 @@ function RootLayout() {
           ]}
         />
       </Header>
-      <Content className="flex-1 flex flex-col overflow-y-scroll">
+      <Content className="flex-1 flex flex-col overflow-y-auto bg-gray-50">
         <Outlet />
       </Content>
       <TanStackDevtools
