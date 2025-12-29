@@ -42,7 +42,7 @@ class ChromaRetriever:
         embs_array = await self._get_embedder().embed([query_text])
         embs = self._ensure_pylist(embs_array[0])
         try:
-            return self.collection.query(
+            raw_result: dict = dict(self.collection.query(
                 query_embeddings=[embs],
                 n_results=k,
                 include=[
@@ -51,7 +51,8 @@ class ChromaRetriever:
                     "distances",
                     "uris",
                 ],  # 不要 embeddings
-            )
+            ))
+            return self._transform_to_row_format(raw_result)
         except InvalidArgumentError as e:
             # 遇到维度不匹配：删除集合并重建，然后重试一次（空集合会返回空结果，不再报 384）
             msg = str(e)
@@ -65,12 +66,36 @@ class ChromaRetriever:
                 )
                 embs_array = await self._get_embedder().embed([query_text])
                 embs = self._ensure_pylist(embs_array[0])
-                return self.collection.query(
+                raw_result: dict = dict(self.collection.query(
                     query_embeddings=[embs],
                     n_results=k,
                     include=["documents", "metadatas", "distances", "uris"],
-                )
+                ))
+                return self._transform_to_row_format(raw_result)
             raise
+
+    def _transform_to_row_format(self, query_result: dict) -> list[dict]:
+        """Transform column-first ChromaDB result to row-first list of objects."""
+        # Extract arrays from nested structure (ChromaDB wraps in outer list)
+        ids = query_result.get("ids", [[]])[0] if query_result.get("ids") else []
+        docs = query_result.get("documents", [[]])[0] if query_result.get("documents") else []
+        metas = query_result.get("metadatas", [[]])[0] if query_result.get("metadatas") else []
+        dists = query_result.get("distances", [[]])[0] if query_result.get("distances") else []
+        
+        # Handle empty results
+        if not ids:
+            return []
+        
+        # Build row-first list of objects
+        return [
+            {
+                "id": id_,
+                "document": doc,
+                "metadata": meta or {},
+                "distance": dist
+            }
+            for id_, doc, meta, dist in zip(ids, docs, metas, dists)
+        ]
 
     async def cleanup(self):
         """清理资源"""

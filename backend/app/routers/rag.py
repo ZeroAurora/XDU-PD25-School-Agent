@@ -25,8 +25,4 @@ async def ingest(items: list[IngestItem] = Body(...)):
 @router.get("/search")
 async def search(q: str = Query(...), k: int = 5):
     retriever = get_retriever()
-    data = await retriever.query(q, k=k)
-    # 返回前再稳妥处理一次，避免 embeddings 混入
-    if isinstance(data, dict):
-        data.pop("embeddings", None)
-    return data
+    return await retriever.query(q, k=k)
