@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Descriptions,
-  Divider,
   Form,
   Input,
   message,
@@ -11,9 +10,9 @@ import {
   Switch,
   Typography,
 } from "antd";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 export const Route = createFileRoute("/profile")({
   component: RouteComponent,
@@ -79,7 +78,7 @@ function RouteComponent() {
       setProfile(values);
       setEditing(false);
       message.success("个人信息已保存");
-    } catch (error) {
+    } catch (_error) {
       message.error("保存失败");
     }
   };
@@ -90,13 +89,13 @@ function RouteComponent() {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(values));
       setSettings(values);
       message.success("设置已保存");
-    } catch (error) {
+    } catch (_error) {
       message.error("保存失败");
     }
   };
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto space-y-6">
+    <div className="p-6 max-w-300 mx-auto space-y-6">
       <Title level={2}>个人设置</Title>
 
       {/* Profile Section */}

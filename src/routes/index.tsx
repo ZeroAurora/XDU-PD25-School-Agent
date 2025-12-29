@@ -206,7 +206,7 @@ function RouteComponent() {
   return (
     <Flex
       vertical
-      className="h-full px-6 max-w-[1200px] mx-auto w-full"
+      className="h-full px-6 max-w-300 mx-auto w-full"
       style={{ height: "100%" }}
     >
       <Flex vertical flex={1} style={{ minHeight: 0, overflow: "hidden", paddingTop: 24 }}>

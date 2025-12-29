@@ -142,7 +142,7 @@ function RouteComponent() {
             <Badge
               color={getEventTypeConfig(event.type).color}
               text={
-                <span className="inline-block max-w-[90px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                <span className="inline-block max-w-22.5 overflow-hidden text-ellipsis whitespace-nowrap align-middle">
                   {event.title}
                 </span>
               }
