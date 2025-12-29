@@ -5,6 +5,7 @@
     "": {
       "name": "XDU-PD25-School-Agent",
       "dependencies": {
+        "@ant-design/cssinjs": "^2.0.1",
         "@ant-design/x": "^2.1.1",
         "@ant-design/x-sdk": "^2.1.1",
         "@tailwindcss/vite": "^4.1.18",

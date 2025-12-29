@@ -116,6 +116,48 @@
           ]
         }
       }
+    },
+    {
+      "name": "Schedule Seed",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/debug/schedule/seed",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "debug",
+            "schedule",
+            "seed"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Schedule Clear",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/debug/schedule/clear",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "debug",
+            "schedule",
+            "clear"
+          ]
+        }
+      }
     }
   ]
 }

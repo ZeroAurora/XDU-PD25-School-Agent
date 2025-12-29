@@ -218,33 +218,3 @@ def _create_event_from_dict(data: dict) -> ScheduleEvent:
     )
 
 
-@router.post("/seed")
-async def seed_sample_events():
-    """Seed sample events from JSON file for testing."""
-    sample_data = _load_sample_events_from_json()
-    if not sample_data:
-        return {"ok": False, "message": "No sample events found in JSON file"}
-
-    sample_events = [_create_event_from_dict(data) for data in sample_data]
-
-    for event in sample_events:
-        _events[event.id] = event
-        await _ingest_to_rag(event)
-
-    return {"ok": True, "count": len(sample_events)}
-
-
-@router.delete("/clear")
-async def clear_all_events():
-    """Clear all events (for testing)."""
-    global _events
-    event_ids = list(_events.keys())
-    _events = {}
-
-    # Batch delete from RAG
-    if event_ids:
-        retriever = get_retriever()
-        rag_ids = [f"schedule:{eid}" for eid in event_ids]
-        await retriever.delete(ids=rag_ids)
-
-    return {"ok": True, "deleted": len(event_ids)}

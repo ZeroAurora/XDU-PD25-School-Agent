@@ -156,8 +156,6 @@ class Settings(BaseModel):
 | `/api/schedule/events/{id}` | PUT | Update an event |
 | `/api/schedule/events/{id}` | DELETE | Delete an event |
 | `/api/schedule/search` | GET | Search events using RAG |
-| `/api/schedule/seed` | POST | Seed sample events |
-| `/api/schedule/clear` | DELETE | Clear all events |
 
 #### Event Request/Response Model
 ```typescript
@@ -220,6 +218,8 @@ interface ScheduleEvent {
 | `/api/debug/documents` | DELETE | Delete all documents |
 | `/api/debug/export` | GET | Export collection as JSON |
 | `/api/debug/batch_ingest` | POST | Batch import documents from JSON |
+| `/api/debug/schedule/seed` | POST | Seed schedule events from JSON file |
+| `/api/debug/schedule/clear` | DELETE | Clear all schedule events from RAG |
 
 ---
 

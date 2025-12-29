@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import re
 import os
+import json
+import uuid
+from pathlib import Path
+from enum import Enum
 
 router = APIRouter()
 
@@ -26,6 +30,25 @@ class DocumentInfo(BaseModel):
     text: str
     metadata: Dict[str, Any]
     distance: Optional[float] = None
+
+
+class EventType(str, Enum):
+    COURSE = "course"
+    ACTIVITY = "activity"
+    EXAM = "exam"
+    MEETING = "meeting"
+    ANNOUNCEMENT = "announcement"
+
+
+class ScheduleEvent(BaseModel):
+    id: str
+    title: str
+    date: str
+    startTime: str
+    endTime: str
+    location: Optional[str] = None
+    type: EventType
+    description: Optional[str] = None
 
 
 class StatsResponse(BaseModel):
@@ -52,6 +75,71 @@ def get_emb():
     if _emb_cache is None:
         _emb_cache = Embedder()
     return _emb_cache
+
+
+# Schedule event helper functions for debug endpoints
+SAMPLE_EVENTS_FILE = Path(__file__).parent.parent.parent / "sample_data" / "sample_campus_events.json"
+
+
+def _event_to_text(event: ScheduleEvent) -> str:
+    """Convert event to searchable text for RAG."""
+    parts = [
+        f"{event.date} {event.startTime}-{event.endTime}",
+        f"【{event.type}】{event.title}",
+    ]
+    if event.location:
+        parts.append(f"地点：{event.location}")
+    if event.description:
+        parts.append(event.description)
+    return " | ".join(parts)
+
+
+def _event_to_metadata(event: ScheduleEvent) -> dict:
+    """Convert event to metadata for RAG."""
+    return {
+        "title": event.title,
+        "date": event.date,
+        "startTime": event.startTime,
+        "endTime": event.endTime,
+        "location": event.location,
+        "type": event.type,
+        "description": event.description,
+        "source": "schedule",
+    }
+
+
+async def _ingest_to_rag(event: ScheduleEvent):
+    """Ingest event into RAG system."""
+    retriever = get_retr()
+    text = _event_to_text(event)
+    metadata = _event_to_metadata(event)
+    await retriever.upsert(
+        docs=[text],
+        metadatas=[metadata],
+        ids=[f"schedule:{event.id}"],
+    )
+
+
+def _load_sample_events_from_json() -> list[dict]:
+    """Load sample events from JSON file."""
+    if SAMPLE_EVENTS_FILE.exists():
+        with open(SAMPLE_EVENTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _create_event_from_dict(data: dict) -> ScheduleEvent:
+    """Create a ScheduleEvent from a dictionary (for JSON data)."""
+    return ScheduleEvent(
+        id=data.get("id", str(uuid.uuid4())),
+        title=data["title"],
+        date=data["date"],
+        startTime=data["startTime"],
+        endTime=data["endTime"],
+        location=data.get("location"),
+        type=data["type"],
+        description=data.get("description"),
+    )
 
 
 async def current_settings():
@@ -358,4 +446,46 @@ async def batch_ingest(request: BatchIngestRequest):
         "skipped": skipped,
         "total": len(docs)
     }
+
+
+@router.post("/schedule/seed")
+async def seed_schedule_events():
+    """Seed schedule events from JSON file for testing."""
+    sample_data = _load_sample_events_from_json()
+    if not sample_data:
+        return {"ok": False, "message": "No sample events found in JSON file"}
+
+    sample_events = [_create_event_from_dict(data) for data in sample_data]
+
+    for event in sample_events:
+        await _ingest_to_rag(event)
+
+    return {"ok": True, "count": len(sample_events)}
+
+
+@router.delete("/schedule/clear")
+async def clear_schedule_events():
+    """Clear all schedule events from RAG (for testing)."""
+    retriever = get_retr()
+    
+    # Get all schedule documents
+    try:
+        results = await retriever.query("", k=10000)
+        schedule_ids = []
+        
+        for doc in results:
+            doc_id = doc.get("id", "")
+            metadata = doc.get("metadata", {})
+            
+            # Check if this is a schedule event
+            if doc_id.startswith("schedule:") or metadata.get("source") == "schedule":
+                schedule_ids.append(doc_id)
+        
+        # Delete all schedule documents
+        if schedule_ids:
+            retriever.collection.delete(ids=schedule_ids)
+        
+        return {"ok": True, "deleted": len(schedule_ids)}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
 

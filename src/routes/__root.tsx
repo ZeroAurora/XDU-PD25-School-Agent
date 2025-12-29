@@ -18,7 +18,7 @@ export const Route = createRootRoute({
 function RootLayout() {
   return (
     <Layout className="h-screen flex flex-col">
-      <Header className="flex items-center px-6 flex-none">
+      <Header className="flex items-center flex-none">
         <div className="text-white text-lg font-bold mr-10">校园活动助手</div>
         <Menu
           theme="dark"  
