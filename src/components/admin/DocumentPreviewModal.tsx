@@ -1,4 +1,11 @@
-import { Modal, Descriptions, Divider, Typography, Button, Popconfirm } from "antd";
+import {
+  Button,
+  Descriptions,
+  Divider,
+  Modal,
+  Popconfirm,
+  Typography,
+} from "antd";
 
 const { Title, Paragraph } = Typography;
 
@@ -15,7 +22,11 @@ interface DocumentPreviewModalProps {
   onDelete: (id: string) => void;
 }
 
-export const DocumentPreviewModal = ({ document, onClose, onDelete }: DocumentPreviewModalProps) => {
+export const DocumentPreviewModal = ({
+  document,
+  onClose,
+  onDelete,
+}: DocumentPreviewModalProps) => {
   const handleDelete = () => {
     if (document) {
       onDelete(document.id);
@@ -72,9 +83,7 @@ export const DocumentPreviewModal = ({ document, onClose, onDelete }: DocumentPr
           <Title level={5} className="mb-3">
             文档内容
           </Title>
-          <Paragraph className="leading-relaxed">
-            {document.text}
-          </Paragraph>
+          <Paragraph className="leading-relaxed">{document.text}</Paragraph>
         </>
       )}
     </Modal>

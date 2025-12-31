@@ -109,11 +109,7 @@ export const DocumentManagement = ({
       size="small"
       extra={
         <Space size="small">
-          <Button
-            icon={<Download size={14} />}
-            onClick={onExport}
-            size="small"
-          >
+          <Button icon={<Download size={14} />} onClick={onExport} size="small">
             导出
           </Button>
           <Popconfirm

@@ -48,6 +48,8 @@ XDU-PD25-School-Agent/
 ├── src/                          # Frontend source code
 │   ├── main.tsx                  # Application entry point
 │   ├── routeTree.gen.ts          # Auto-generated router tree
+│   ├── hooks/                    # React Query hooks for API calls
+│   │   └── useApi.ts             # Centralized API hooks (useChat, useEvents, etc.)
 │   ├── routes/                   # File-based routes
 │   │   ├── __root.tsx            # Root layout with navigation
 │   │   ├── index.tsx             # Home/Chat page
@@ -285,14 +287,14 @@ Home page with AI chat interface.
 
 **Features:**
 - Uses Ant Design X (`@ant-design/x`) for chat components
-- [`useXAgent`](src/routes/index.tsx:27) for AI response handling
-- [`useXChat`](src/routes/index.tsx:43) for message management
+- [`useChat`](src/hooks/useApi.ts:57) hook from React Query for AI response handling
+- Message state management with expandable source contexts
 - Bubble list display with user/AI roles
 - Welcome component with system introduction
 
 **Current Status:**
 - Integrated with `/api/agent/chat` endpoint
-- Uses `fetch` to call the backend RAG-powered agent
+- Uses React Query's `useMutation` for chat requests
 - **Source Context Display:** Expandable sources section showing RAG document references with metadata
 - Contexts are stored separately and linked to messages via IDs
 
@@ -305,17 +307,19 @@ Schedule management with calendar view.
 - Date cell rendering with event badges
 - Event list by selected date
 - Color-coded event types
-- **API Integration:** Fetches events from `/api/schedule/events`
+- **API Integration:** Uses React Query hooks (`useEvents`, `useCreateEvent`, `useUpdateEvent`, `useDeleteEvent`)
 - **RAG Search:** Events are searchable via the AI chat interface
 - **Event Editing:** Edit existing events via modal form
-- **Natural Language Search:** RAG-powered search for schedule events
+- **Natural Language Search:** RAG-powered search for schedule events using `useSearchSchedule`
 - **Quick Actions:** "Today" button, "Search Schedule" modal
 - **Event List:** Edit and delete buttons on each event
 
-**Current Status:**
-- Integrated with `/api/schedule/events` endpoint
-- Uses `fetch` for CRUD operations (create, update, delete)
-- Automatic RAG ingestion on event changes
+**React Query Hooks Used:**
+- [`useEvents`](src/hooks/useApi.ts:71) - Fetch all events (cached)
+- [`useCreateEvent`](src/hooks/useApi.ts:80) - Create new event with automatic cache invalidation
+- [`useUpdateEvent`](src/hooks/useApi.ts:95) - Update event with automatic cache invalidation
+- [`useDeleteEvent`](src/hooks/useApi.ts:110) - Delete event with automatic cache invalidation
+- [`useSearchSchedule`](src/hooks/useApi.ts:122) - Search events using RAG
 
 
 
@@ -338,12 +342,24 @@ Admin dashboard for RAG system management.
 - **Danger Zone:** Protected destructive operations (reset, delete all) with confirmations
 - **API Reference:** Quick copy of debug endpoint URLs
 
+**React Query Hooks Used:**
+- [`useCollectionStats`](src/hooks/useApi.ts:137) - Fetch collection statistics (cached)
+- [`useDocuments`](src/hooks/useApi.ts:160) - Fetch documents with pagination (cached)
+- [`useRagSearch`](src/hooks/useApi.ts:177) - Search RAG vector store
+- [`useIngestDocument`](src/hooks/useApi.ts:192) - Ingest single document with cache invalidation
+- [`useBatchIngest`](src/hooks/useApi.ts:206) - Batch import documents with cache invalidation
+- [`useDeleteDocument`](src/hooks/useApi.ts:220) - Delete single document with cache invalidation
+- [`useDeleteAllDocuments`](src/hooks/useApi.ts:233) - Delete all documents with cache invalidation
+- [`useResetCollection`](src/hooks/useApi.ts:245) - Reset collection with cache invalidation
+- [`useSeedSchedule`](src/hooks/useApi.ts:257) - Seed schedule events with cache invalidation
+- [`useExportCollection`](src/hooks/useApi.ts:270) - Export collection as JSON
+
 **New Batch Import Components:**
 - [`src/components/admin/BatchImportCard.tsx`](src/components/admin/BatchImportCard.tsx:1) - Main batch import card combining all sub-components
 - [`src/components/admin/FileUploadArea.tsx`](src/components/admin/FileUploadArea.tsx:1) - File upload with drag-and-drop, JSON validation, and enhanced UI with drag states, status icons, and visual feedback
 - [`src/components/admin/ImportConfig.tsx`](src/components/admin/ImportConfig.tsx:1) - Import configuration panel (skip duplicates, validate format, dry-run)
 - [`src/components/admin/ImportProgress.tsx`](src/components/admin/ImportProgress.tsx:1) - Progress display with status indicators
-- [`src/components/admin/useBatchImport.ts`](src/components/admin/useBatchImport.ts:1) - Custom hook for batch import logic
+- [`src/components/admin/useBatchImport.ts`](src/components/admin/useBatchImport.ts:1) - Custom hook using `useBatchIngest` for batch import logic
 
 **Endpoints Used:**
 - `GET /api/debug/stats` - Collection statistics
@@ -510,8 +526,10 @@ curl -X DELETE http://localhost:8000/api/debug/reset
 | [`backend/app/services/agent_core.py`](backend/app/services/agent_core.py) | RAG agent logic |
 | [`backend/app/services/retriever.py`](backend/app/services/retriever.py) | Vector retrieval |
 | [`backend/app/services/embedding.py`](backend/app/services/embedding.py) | Text embeddings |
+| [`src/hooks/useApi.ts`](src/hooks/useApi.ts) | React Query hooks for all API calls |
 | [`src/routes/index.tsx`](src/routes/index.tsx) | Main chat UI |
 | [`src/routes/schedule.tsx`](src/routes/schedule.tsx) | Schedule view |
+| [`src/routes/admin.tsx`](src/routes/admin.tsx) | RAG admin dashboard |
 
 ### Auto-Generated Files
 

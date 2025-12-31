@@ -1,5 +1,6 @@
 import { message } from "antd";
 import { useCallback, useState } from "react";
+import { useBatchIngest } from "@/hooks/useApi";
 
 export interface BatchFileInfo {
   name: string;
@@ -44,8 +45,14 @@ export function useBatchImport() {
   const [config, setConfig] = useState<ImportConfig>(INITIAL_CONFIG);
   const [state, setState] = useState<ImportState>(INITIAL_STATE);
 
-  const canImport = file !== null && state.status !== "importing";
-  const isImporting = state.status === "importing";
+  const batchIngestMutation = useBatchIngest();
+
+  const canImport =
+    file !== null &&
+    state.status !== "importing" &&
+    !batchIngestMutation.isPending;
+  const isImporting =
+    state.status === "importing" || batchIngestMutation.isPending;
 
   const updateConfig = useCallback((newConfig: Partial<ImportConfig>) => {
     setConfig((prev) => ({ ...prev, ...newConfig }));
@@ -64,7 +71,6 @@ export function useBatchImport() {
       return;
     }
 
-    // Dry run mode
     if (config.dryRun) {
       setState({
         status: "success",
@@ -95,21 +101,10 @@ export function useBatchImport() {
         throw new Error("JSON文件必须包含文档数组");
       }
 
-      const response = await fetch("/api/debug/batch_ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documents,
-          options: { skip_duplicates: config.skipDuplicates },
-        }),
+      const result = await batchIngestMutation.mutateAsync({
+        documents,
+        options: { skip_duplicates: config.skipDuplicates },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "批量导入失败");
-      }
-
-      const result = await response.json();
 
       setState({
         status: "success",
@@ -132,7 +127,7 @@ export function useBatchImport() {
       }));
       message.error(`批量导入失败: ${errorMessage}`);
     }
-  }, [file, fileInfo, config]);
+  }, [file, fileInfo, config, batchIngestMutation]);
 
   const retry = useCallback(async () => {
     setState(INITIAL_STATE);

@@ -1,25 +1,34 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, message, Typography, Modal } from "antd";
+import { Button, Modal, message, Typography } from "antd";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { BatchImportCard } from "@/components/admin/BatchImportCard";
-import { StatsDashboard, type CollectionStats } from "@/components/admin/StatsDashboard";
-import { SmartSearch, type RAGDocument, type SearchHistoryItem } from "@/components/admin/SmartSearch";
-import { DocumentManagement } from "@/components/admin/DocumentManagement";
-import { DangerZone } from "@/components/admin/DangerZone";
-import { ActivityLog, type ActivityLogEntry } from "@/components/admin/ActivityLog";
+import {
+  ActivityLog,
+  type ActivityLogEntry,
+} from "@/components/admin/ActivityLog";
 import { APIReference } from "@/components/admin/APIReference";
+import { BatchImportCard } from "@/components/admin/BatchImportCard";
+import { DangerZone } from "@/components/admin/DangerZone";
+import { DocumentManagement } from "@/components/admin/DocumentManagement";
 import { DocumentPreviewModal } from "@/components/admin/DocumentPreviewModal";
+import {
+  type RAGDocument,
+  type SearchHistoryItem,
+  SmartSearch,
+} from "@/components/admin/SmartSearch";
+import { StatsDashboard } from "@/components/admin/StatsDashboard";
+import {
+  useCollectionStats,
+  useDeleteAllDocuments,
+  useDeleteDocument,
+  useDocuments,
+  useExportCollection,
+  useRagSearch,
+  useResetCollection,
+  useSeedSchedule,
+} from "@/hooks/useApi";
 
 const { Title, Text } = Typography;
-
-// Types
-interface DocumentListResponse {
-  total: number;
-  limit: number;
-  offset: number;
-  documents: RAGDocument[];
-}
 
 // Constants
 const SEARCH_HISTORY_KEY = "rag_admin_search_history";
@@ -31,15 +40,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 function RouteComponent() {
-  // Loading states
-  const [loading, setLoading] = useState(false);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [documentsLoading, setDocumentsLoading] = useState(false);
-
   // Data states
-  const [stats, setStats] = useState<CollectionStats | null>(null);
-  const [documents, setDocuments] = useState<RAGDocument[]>([]);
-  const [documentTotal, setDocumentTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<RAGDocument[]>([]);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
@@ -53,6 +54,27 @@ function RouteComponent() {
 
   // Pagination
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
+
+  // React Query hooks
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    refetch: refetchStats,
+  } = useCollectionStats();
+  const {
+    data: documentsData,
+    isLoading: documentsLoading,
+    refetch: refetchDocuments,
+  } = useDocuments({
+    limit: pagination.pageSize,
+    offset: (pagination.current - 1) * pagination.pageSize,
+  });
+  const searchMutation = useRagSearch();
+  const deleteDocumentMutation = useDeleteDocument();
+  const deleteAllDocumentsMutation = useDeleteAllDocuments();
+  const resetCollectionMutation = useResetCollection();
+  const exportCollectionMutation = useExportCollection();
+  const seedScheduleMutation = useSeedSchedule();
 
   // Initialize search history from localStorage
   useEffect(() => {
@@ -79,77 +101,14 @@ function RouteComponent() {
     [],
   );
 
-  // Fetch collection stats
-  const fetchStats = useCallback(
-    async (showLoading = true) => {
-      if (showLoading) setStatsLoading(true);
-      try {
-        const response = await fetch("/api/debug/stats");
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        } else {
-          const pingResponse = await fetch("/api/debug/ping_chroma");
-          if (pingResponse.ok) {
-            const pingData = await pingResponse.json();
-            setStats({
-              document_count: pingData.result_count || 0,
-              storage_size_bytes: pingData.storage_size || 0,
-              storage_size_formatted: pingData.storage_size_formatted || "0 B",
-              embedding_dimension: pingData.model_dim || 1024,
-              collection_name: pingData.collection_name || "campus_acts",
-              chroma_status: pingData.status === "ok" ? "ok" : "error",
-              health: pingData.health || "degraded",
-              last_updated: new Date().toISOString(),
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch stats:", error);
-        addActivityLog({
-          type: "error",
-          action: "获取统计信息失败",
-          details: String(error),
-        });
-      } finally {
-        if (showLoading) setStatsLoading(false);
-      }
-    },
-    [addActivityLog],
-  );
-
-  // Fetch documents list
-  const fetchDocuments = useCallback(async (page = 1, pageSize = 10) => {
-    setDocumentsLoading(true);
-    try {
-      const offset = (page - 1) * pageSize;
-      const response = await fetch(
-        `/api/debug/documents?limit=${pageSize}&offset=${offset}`,
-      );
-      if (response.ok) {
-        const data: DocumentListResponse = await response.json();
-        setDocuments(data.documents);
-        setDocumentTotal(data.total);
-        setPagination({ current: page, pageSize });
-      }
-    } catch (error) {
-      console.error("Failed to fetch documents:", error);
-      message.error("获取文档列表失败");
-    } finally {
-      setDocumentsLoading(false);
-    }
-  }, []);
-
   // Initial data fetch
   useEffect(() => {
-    fetchStats();
-    fetchDocuments();
     addActivityLog({
       type: "info",
       action: "打开管理后台",
       details: "用户进入RAG管理页面",
     });
-  }, [fetchStats, fetchDocuments, addActivityLog]);
+  }, [addActivityLog]);
 
   // Save search to history
   const saveToHistory = useCallback((query: string, resultCount: number) => {
@@ -172,13 +131,11 @@ function RouteComponent() {
       setSearchResults([]);
       return;
     }
-    setLoading(true);
     try {
-      const response = await fetch(
-        `/api/debug/rag/search?q=${encodeURIComponent(searchQuery)}&k=10`,
-      );
-      const data = await response.json();
-      const results = Array.isArray(data) ? data : data.results || [];
+      const results = await searchMutation.mutateAsync({
+        query: searchQuery,
+        k: 10,
+      });
       setSearchResults(results);
       saveToHistory(searchQuery, results.length);
       addActivityLog({
@@ -186,18 +143,15 @@ function RouteComponent() {
         action: "执行搜索",
         details: `查询: "${searchQuery}", 结果: ${results.length}条`,
       });
-    } catch (error) {
-      console.error("Search failed:", error);
+    } catch {
       message.error("搜索失败");
       addActivityLog({
         type: "error",
         action: "搜索失败",
-        details: String(error),
+        details: searchQuery,
       });
-    } finally {
-      setLoading(false);
     }
-  }, [searchQuery, saveToHistory, addActivityLog]);
+  }, [searchQuery, saveToHistory, addActivityLog, searchMutation]);
 
   // Handle search from history
   const handleSearchFromHistory = useCallback((query: string) => {
@@ -222,33 +176,22 @@ function RouteComponent() {
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: async () => {
-        setLoading(true);
         try {
-          const response = await fetch("/api/debug/reset", {
-            method: "DELETE",
+          await resetCollectionMutation.mutateAsync();
+          message.success("集合已重置");
+          addActivityLog({
+            type: "warning",
+            action: "重置集合",
+            details: "所有文档已删除",
           });
-          const data = await response.json();
-          if (data.ok) {
-            message.success("集合已重置");
-            addActivityLog({
-              type: "warning",
-              action: "重置集合",
-              details: "所有文档已删除",
-            });
-            fetchStats();
-            fetchDocuments();
-          } else {
-            message.error("重置失败");
-          }
-        } catch (error) {
-          console.error("Reset failed:", error);
+          refetchStats();
+          refetchDocuments();
+        } catch {
           message.error("重置失败");
-        } finally {
-          setLoading(false);
         }
       },
     });
-  }, [fetchStats, fetchDocuments, addActivityLog]);
+  }, [resetCollectionMutation, addActivityLog, refetchStats, refetchDocuments]);
 
   // Handle delete all documents
   const handleDeleteAll = useCallback(() => {
@@ -260,66 +203,51 @@ function RouteComponent() {
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: async () => {
-        setLoading(true);
         try {
-          const response = await fetch("/api/debug/documents", {
-            method: "DELETE",
+          const data = await deleteAllDocumentsMutation.mutateAsync();
+          message.success(`已删除 ${data.deleted_count} 篇文档`);
+          addActivityLog({
+            type: "warning",
+            action: "删除所有文档",
+            details: `删除数量: ${data.deleted_count}`,
           });
-          const data = await response.json();
-          if (data.ok) {
-            message.success(`已删除 ${data.deleted_count} 篇文档`);
-            addActivityLog({
-              type: "warning",
-              action: "删除所有文档",
-              details: `删除数量: ${data.deleted_count}`,
-            });
-            fetchStats();
-            fetchDocuments();
-          } else {
-            message.error("删除失败");
-          }
-        } catch (error) {
-          console.error("Delete all failed:", error);
+          refetchStats();
+          refetchDocuments();
+        } catch {
           message.error("删除失败");
-        } finally {
-          setLoading(false);
         }
       },
     });
-  }, [fetchStats, fetchDocuments, addActivityLog]);
+  }, [
+    deleteAllDocumentsMutation,
+    addActivityLog,
+    refetchStats,
+    refetchDocuments,
+  ]);
 
   // Handle delete single document
   const handleDeleteDocument = useCallback(
     async (docId: string) => {
       try {
-        const response = await fetch(`/api/debug/documents/${docId}`, {
-          method: "DELETE",
+        await deleteDocumentMutation.mutateAsync(docId);
+        message.success("文档已删除");
+        addActivityLog({
+          type: "success",
+          action: "删除文档",
+          details: `ID: ${docId}`,
         });
-        const data = await response.json();
-        if (data.ok) {
-          message.success("文档已删除");
-          addActivityLog({
-            type: "success",
-            action: "删除文档",
-            details: `ID: ${docId}`,
-          });
-          fetchDocuments(pagination.current, pagination.pageSize);
-        } else {
-          message.error("删除失败");
-        }
-      } catch (error) {
-        console.error("Delete failed:", error);
+        refetchDocuments();
+      } catch {
         message.error("删除失败");
       }
     },
-    [fetchDocuments, pagination, addActivityLog],
+    [deleteDocumentMutation, addActivityLog, refetchDocuments],
   );
 
   // Handle export collection
   const handleExport = useCallback(async () => {
     try {
-      const response = await fetch("/api/debug/export");
-      const data = await response.json();
+      const data = await exportCollectionMutation.mutateAsync();
 
       const blob = new Blob([JSON.stringify(data, null, 2)], {
         type: "application/json",
@@ -337,35 +265,39 @@ function RouteComponent() {
         action: "导出文档",
         details: `导出数量: ${data.count}`,
       });
-    } catch (error) {
-      console.error("Export failed:", error);
+    } catch {
       message.error("导出失败");
     }
-  }, [addActivityLog]);
+  }, [exportCollectionMutation, addActivityLog]);
 
   // Seed data
   const handleSeed = useCallback(() => {
-    try {
-      fetch("/api/debug/schedule/seed", { method: "POST" }).then(async (response) => {
-        const data = await response.json();
-        if (data.ok) {
-          message.success(`已添加 ${data.count} 篇示例文档`);
-          addActivityLog({
-            type: "success",
-            action: "添加示例文档",
-            details: `添加数量: ${data.count}`,
-          });
-          fetchStats();
-          fetchDocuments();
-        } else {
+    Modal.confirm({
+      title: "确认填充默认数据",
+      content: "此操作将添加示例文档到集合中。",
+      okText: "确认",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const data = await seedScheduleMutation.mutateAsync();
+          if (data.ok) {
+            message.success(`已添加 ${data.count} 篇示例文档`);
+            addActivityLog({
+              type: "success",
+              action: "添加示例文档",
+              details: `添加数量: ${data.count}`,
+            });
+            refetchStats();
+            refetchDocuments();
+          } else {
+            message.error("添加示例文档失败");
+          }
+        } catch {
           message.error("添加示例文档失败");
         }
-      });
-    } catch (error) {
-      console.error("Seed failed:", error);
-      message.error("添加示例文档失败");
-    }
-  }, [addActivityLog, fetchStats, fetchDocuments]);
+      },
+    });
+  }, [seedScheduleMutation, addActivityLog, refetchStats, refetchDocuments]);
 
   return (
     <div className="min-h-full p-4 lg:p-6 xl:p-8">
@@ -384,7 +316,10 @@ function RouteComponent() {
           </div>
           <Button
             icon={<RefreshCw size={16} />}
-            onClick={() => fetchStats(true)}
+            onClick={() => {
+              refetchStats();
+              refetchDocuments();
+            }}
             loading={statsLoading}
             className="self-start sm:self-auto"
           >
@@ -393,16 +328,13 @@ function RouteComponent() {
         </div>
 
         {/* Stats Dashboard */}
-        <StatsDashboard
-          stats={stats}
-          loading={statsLoading}
-        />
+        <StatsDashboard stats={statsData || null} loading={statsLoading} />
 
         {/* Main Content Grid */}
         <div>
           {/* Smart Search */}
           <SmartSearch
-            loading={loading}
+            loading={searchMutation.isPending}
             searchQuery={searchQuery}
             searchResults={searchResults}
             searchHistory={searchHistory}
@@ -419,23 +351,26 @@ function RouteComponent() {
         <div className="my-6">
           <BatchImportCard
             onImportComplete={() => {
-              fetchStats();
-              fetchDocuments();
+              refetchStats();
+              refetchDocuments();
             }}
           />
         </div>
 
         {/* Document Management */}
         <DocumentManagement
-          documents={documents}
-          total={documentTotal}
+          documents={documentsData?.documents || []}
+          total={documentsData?.total || 0}
           loading={documentsLoading}
           pagination={pagination}
           onExport={handleExport}
           onDeleteAll={handleDeleteAll}
           onDeleteDocument={handleDeleteDocument}
           onPreview={setPreviewDocument}
-          onPageChange={(page, pageSize) => fetchDocuments(page, pageSize)}
+          onPageChange={(page, pageSize) => {
+            setPagination({ current: page, pageSize });
+            refetchDocuments();
+          }}
         />
 
         {/* Danger Zone & Activity Log */}
@@ -444,12 +379,13 @@ function RouteComponent() {
             onReset={handleReset}
             onDeleteAll={handleDeleteAll}
             onSeed={handleSeed}
-            loading={loading}
+            loading={
+              deleteAllDocumentsMutation.isPending ||
+              resetCollectionMutation.isPending ||
+              seedScheduleMutation.isPending
+            }
           />
-          <ActivityLog
-            logs={activityLog}
-            onClear={() => setActivityLog([])}
-          />
+          <ActivityLog logs={activityLog} onClear={() => setActivityLog([])} />
         </div>
 
         {/* API Reference */}

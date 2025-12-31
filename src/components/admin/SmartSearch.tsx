@@ -1,5 +1,5 @@
-import { Card, Input, Button, Table, Typography, Tooltip, Empty } from "antd";
-import { Search, History } from "lucide-react";
+import { Button, Card, Empty, Input, Table, Tooltip, Typography } from "antd";
+import { History, Search } from "lucide-react";
 
 const { Paragraph, Text } = Typography;
 
@@ -155,10 +155,7 @@ export const SmartSearch = ({
                 <span className="text-sm text-gray-700 truncate">
                   {item.query}
                 </span>
-                <Text
-                  type="secondary"
-                  className="text-xs whitespace-nowrap"
-                >
+                <Text type="secondary" className="text-xs whitespace-nowrap">
                   {item.resultCount} 结果
                 </Text>
               </Button>

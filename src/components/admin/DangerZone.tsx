@@ -8,7 +8,12 @@ interface DangerZoneProps {
   loading: boolean;
 }
 
-export const DangerZone = ({ onReset, onDeleteAll, onSeed, loading }: DangerZoneProps) => {
+export const DangerZone = ({
+  onReset,
+  onDeleteAll,
+  onSeed,
+  loading,
+}: DangerZoneProps) => {
   return (
     <Card
       title={
@@ -36,7 +41,12 @@ export const DangerZone = ({ onReset, onDeleteAll, onSeed, loading }: DangerZone
           okText="确认"
           cancelText="取消"
         >
-          <Button danger icon={<Trash2 size={14} />} size="small" loading={loading}>
+          <Button
+            danger
+            icon={<Trash2 size={14} />}
+            size="small"
+            loading={loading}
+          >
             重置集合
           </Button>
         </Popconfirm>
@@ -47,7 +57,12 @@ export const DangerZone = ({ onReset, onDeleteAll, onSeed, loading }: DangerZone
           okText="确认"
           cancelText="取消"
         >
-          <Button danger icon={<Delete size={14} />} size="small" loading={loading}>
+          <Button
+            danger
+            icon={<Delete size={14} />}
+            size="small"
+            loading={loading}
+          >
             删除所有文档
           </Button>
         </Popconfirm>
@@ -58,7 +73,12 @@ export const DangerZone = ({ onReset, onDeleteAll, onSeed, loading }: DangerZone
           okText="确认"
           cancelText="取消"
         >
-          <Button danger icon={<Import size={14} />} size="small" loading={loading}>
+          <Button
+            danger
+            icon={<Import size={14} />}
+            size="small"
+            loading={loading}
+          >
             填充默认数据
           </Button>
         </Popconfirm>

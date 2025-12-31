@@ -28,20 +28,16 @@ import {
   Calendar as TodayIcon,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import {
+  useCreateEvent,
+  useDeleteEvent,
+  useEvents,
+  useSearchSchedule,
+  useUpdateEvent,
+} from "@/hooks/useApi";
 
 const { Title, Text } = Typography;
-
-interface ScheduleEvent {
-  id: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location?: string | null;
-  type: string;
-  description?: string | null;
-}
 
 interface ScheduleFormValues {
   title: string;
@@ -77,32 +73,33 @@ function RouteComponent() {
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<ScheduleEvent | null>(null);
-  const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [editingEvent, setEditingEvent] = useState<{ id: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<ScheduleEvent[]>([]);
+  const [searchResults, setSearchResults] = useState<
+    Array<{
+      id: string;
+      title: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      location?: string | null;
+      type: string;
+      description?: string | null;
+    }>
+  >([]);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [form] = Form.useForm<ScheduleFormValues>();
 
-  // Fetch events from API
-  const fetchEvents = useCallback(async () => {
-    try {
-      const response = await fetch("/api/schedule/events");
-      const data = await response.json();
-      setEvents(data.events || []);
-    } catch (error) {
-      console.error("Failed to fetch events:", error);
-      message.error("加载日程失败");
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  // React Query hooks
+  const { data: events = [] } = useEvents();
+  const createEventMutation = useCreateEvent();
+  const updateEventMutation = useUpdateEvent();
+  const deleteEventMutation = useDeleteEvent();
+  const searchMutation = useSearchSchedule();
 
   // 按日期分组事件
   const eventsByDate = useMemo(() => {
-    const grouped: Record<string, ScheduleEvent[]> = {};
+    const grouped: Record<string, typeof events> = {};
     for (const event of events) {
       if (!grouped[event.date]) {
         grouped[event.date] = [];
@@ -123,14 +120,14 @@ function RouteComponent() {
   // 日历单元格渲染
   const dateCellRender = (value: Dayjs) => {
     const dateKey = value.format("YYYY-MM-DD");
-    const events = eventsByDate[dateKey] || [];
+    const dateEvents = eventsByDate[dateKey] || [];
 
-    if (events.length === 0) return null;
+    if (dateEvents.length === 0) return null;
 
     // 最多显示2个事件，避免溢出
     const maxDisplay = 2;
-    const displayEvents = events.slice(0, maxDisplay);
-    const remainingCount = events.length - maxDisplay;
+    const displayEvents = dateEvents.slice(0, maxDisplay);
+    const remainingCount = dateEvents.length - maxDisplay;
 
     return (
       <ul className="m-0 list-none overflow-hidden p-0">
@@ -171,7 +168,7 @@ function RouteComponent() {
   };
 
   // 打开编辑日程弹窗
-  const openEditModal = (event: ScheduleEvent) => {
+  const openEditModal = (event: (typeof events)[0]) => {
     setIsEditMode(true);
     setEditingEvent(event);
     form.setFieldsValue({
@@ -198,50 +195,35 @@ function RouteComponent() {
 
   // 处理表单提交
   const handleSubmitSchedule = async (values: ScheduleFormValues) => {
+    const eventData = {
+      title: values.title,
+      date: values.date.format("YYYY-MM-DD"),
+      startTime: values.startTime.format("HH:mm"),
+      endTime: values.endTime.format("HH:mm"),
+      location: values.location,
+      type: values.type,
+      description: values.description,
+    };
+
     try {
-      const eventData = {
-        title: values.title,
-        date: values.date.format("YYYY-MM-DD"),
-        startTime: values.startTime.format("HH:mm"),
-        endTime: values.endTime.format("HH:mm"),
-        location: values.location,
-        type: values.type,
-        description: values.description,
-      };
-
-      let response: Response;
       if (isEditMode && editingEvent) {
-        // Update existing event
-        response = await fetch(`/api/schedule/events/${editingEvent.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(eventData),
+        await updateEventMutation.mutateAsync({
+          id: editingEvent.id,
+          data: eventData,
         });
+        message.success("日程更新成功");
       } else {
-        // Create new event
-        response = await fetch("/api/schedule/events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(eventData),
-        });
+        await createEventMutation.mutateAsync(eventData);
+        message.success("日程创建成功");
       }
 
-      if (!response.ok) {
-        throw new Error(
-          isEditMode ? "Failed to update event" : "Failed to create event",
-        );
-      }
-
-      await fetchEvents();
       setIsModalOpen(false);
 
       // 如果新日程在当前选中日期，自动选中该日期
       if (values.date.isSame(selectedDate, "day")) {
         setSelectedDate(values.date);
       }
-      message.success(isEditMode ? "日程更新成功" : "日程创建成功");
-    } catch (error) {
-      console.error("Failed to submit event:", error);
+    } catch {
       message.error(isEditMode ? "更新日程失败" : "创建日程失败");
     }
   };
@@ -252,46 +234,33 @@ function RouteComponent() {
       setSearchResults([]);
       return;
     }
+
     try {
-      const response = await fetch(
-        `/api/schedule/search?q=${encodeURIComponent(searchQuery)}`,
-      );
-      const data = await response.json();
-      setSearchResults(data.events || []);
-    } catch (error) {
-      console.error("Search failed:", error);
+      const results = await searchMutation.mutateAsync(searchQuery);
+      setSearchResults(results);
+    } catch {
       message.error("搜索失败");
     }
   };
 
   // 从搜索结果添加到日程
-  const handleAddFromSearch = async (event: ScheduleEvent) => {
+  const handleAddFromSearch = async (event: (typeof searchResults)[0]) => {
     try {
-      const response = await fetch("/api/schedule/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: event.title,
-          date: event.date,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          location: event.location,
-          type: event.type,
-          description: event.description,
-        }),
+      await createEventMutation.mutateAsync({
+        title: event.title,
+        date: event.date,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: event.location,
+        type: event.type,
+        description: event.description,
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to add event");
-      }
-
-      await fetchEvents();
       setIsSearchModalOpen(false);
       setSearchQuery("");
       setSearchResults([]);
       message.success("已添加到日程");
-    } catch (error) {
-      console.error("Failed to add event:", error);
+    } catch {
       message.error("添加失败");
     }
   };
@@ -299,18 +268,9 @@ function RouteComponent() {
   // 处理删除事件
   const handleDeleteEvent = async (eventId: string) => {
     try {
-      const response = await fetch(`/api/schedule/events/${eventId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete event");
-      }
-
-      await fetchEvents();
+      await deleteEventMutation.mutateAsync(eventId);
       message.success("日程已删除");
-    } catch (error) {
-      console.error("Failed to delete event:", error);
+    } catch {
       message.error("删除日程失败");
     }
   };
@@ -465,6 +425,9 @@ function RouteComponent() {
         okText={isEditMode ? "保存" : "创建"}
         cancelText="取消"
         width={600}
+        confirmLoading={
+          createEventMutation.isPending || updateEventMutation.isPending
+        }
       >
         <Form
           form={form}
@@ -562,6 +525,7 @@ function RouteComponent() {
             type="primary"
             icon={<Search className="h-4 w-4" />}
             onClick={handleSearch}
+            loading={searchMutation.isPending}
           >
             搜索
           </Button>
@@ -580,6 +544,7 @@ function RouteComponent() {
                     size="small"
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => handleAddFromSearch(event)}
+                    loading={createEventMutation.isPending}
                   >
                     添加
                   </Button>,
@@ -600,9 +565,11 @@ function RouteComponent() {
             )}
           />
         )}
-        {searchQuery && searchResults.length === 0 && (
-          <div className="py-8 text-center text-gray-400">未找到相关日程</div>
-        )}
+        {searchQuery &&
+          searchResults.length === 0 &&
+          !searchMutation.isPending && (
+            <div className="py-8 text-center text-gray-400">未找到相关日程</div>
+          )}
       </Modal>
     </div>
   );

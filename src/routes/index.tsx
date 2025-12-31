@@ -8,6 +8,7 @@ import { Bubble, type BubbleListProps, Sender, Welcome } from "@ant-design/x";
 import { createFileRoute } from "@tanstack/react-router";
 import { Avatar, Button, Card, Collapse, Flex, Tag, Typography } from "antd";
 import { useCallback, useState } from "react";
+import { useChat } from "@/hooks/useApi";
 
 const { Text } = Typography;
 
@@ -30,8 +31,9 @@ interface Message {
 function RouteComponent() {
   const [content, setContent] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isRequesting, setIsRequesting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  const chatMutation = useChat();
 
   // Toggle expanded state for contexts
   const toggleExpanded = useCallback((messageId: string) => {
@@ -47,64 +49,53 @@ function RouteComponent() {
   }, []);
 
   // Handle chat request
-  const handleRequest = useCallback(async (userMessage: string) => {
-    if (!userMessage.trim() || isRequesting) return;
+  const handleRequest = useCallback(
+    async (userMessage: string) => {
+      if (!userMessage.trim() || chatMutation.isPending) return;
 
-    const userMsgId = `user-${Date.now()}`;
-    const assistantMsgId = `assistant-${Date.now()}`;
+      const userMsgId = `user-${Date.now()}`;
+      const assistantMsgId = `assistant-${Date.now()}`;
 
-    // Add user message
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, content: userMessage, role: "user" },
-    ]);
+      // Add user message
+      setMessages((prev) => [
+        ...prev,
+        { id: userMsgId, content: userMessage, role: "user" },
+      ]);
 
-    // Add placeholder for assistant
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantMsgId, content: "", role: "assistant" },
-    ]);
+      // Add placeholder for assistant
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantMsgId, content: "", role: "assistant" },
+      ]);
 
-    setIsRequesting(true);
+      try {
+        const data = await chatMutation.mutateAsync({ message: userMessage });
 
-    try {
-      const response = await fetch("/api/agent/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Update assistant message with response
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: data.reply || "抱歉，无法获取回复。",
+                  contexts: data.contexts || [],
+                }
+              : msg,
+          ),
+        );
+      } catch {
+        // Update assistant message with error
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? { ...msg, content: "抱歉，出现了一些问题。请重试。" }
+              : msg,
+          ),
+        );
       }
-
-      const data = await response.json();
-
-      // Update assistant message with response
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? {
-                ...msg,
-                content: data.reply || "抱歉，无法获取回复。",
-                contexts: data.contexts || [],
-              }
-            : msg,
-        ),
-      );
-    } catch (error) {
-      console.error("Chat error:", error);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? { ...msg, content: "抱歉，出现了一些问题。请重试。" }
-            : msg,
-        ),
-      );
-    } finally {
-      setIsRequesting(false);
-    }
-  }, [isRequesting]);
+    },
+    [chatMutation],
+  );
 
   // Render message content with expandable sources
   const renderMessageContent = useCallback(
@@ -122,7 +113,9 @@ function RouteComponent() {
               <Button
                 type="link"
                 size="small"
-                icon={isExpanded ? <NodeCollapseOutlined /> : <ExpandOutlined />}
+                icon={
+                  isExpanded ? <NodeCollapseOutlined /> : <ExpandOutlined />
+                }
                 onClick={() => toggleExpanded(msg.id)}
                 className="p-0 h-auto text-gray-500"
               >
@@ -200,7 +193,8 @@ function RouteComponent() {
     key: msg.id,
     role: msg.role === "user" ? "user" : "assistant",
     content: msg.role === "user" ? msg.content : renderMessageContent(msg),
-    loading: msg.role === "assistant" && msg.content === "" && isRequesting,
+    loading:
+      msg.role === "assistant" && msg.content === "" && chatMutation.isPending,
   }));
 
   return (
@@ -209,7 +203,11 @@ function RouteComponent() {
       className="h-full px-6 max-w-300 mx-auto w-full"
       style={{ height: "100%" }}
     >
-      <Flex vertical flex={1} style={{ minHeight: 0, overflow: "hidden", paddingTop: 24 }}>
+      <Flex
+        vertical
+        flex={1}
+        style={{ minHeight: 0, overflow: "hidden", paddingTop: 24 }}
+      >
         {messages.length === 0 && (
           <Welcome
             icon={<RobotOutlined style={{ fontSize: 40, color: "#fa8c16" }} />}
@@ -228,7 +226,7 @@ function RouteComponent() {
 
       <div style={{ paddingTop: 16, paddingBottom: 24 }}>
         <Sender
-          loading={isRequesting}
+          loading={chatMutation.isPending}
           value={content}
           onChange={setContent}
           onSubmit={(nextContent) => {

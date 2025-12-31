@@ -1,5 +1,11 @@
-import { Card, List, Typography, Tag, Empty, Button } from "antd";
-import { History, Info, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+import { Button, Card, Empty, List, Tag, Typography } from "antd";
+import {
+  AlertTriangle,
+  CheckCircle,
+  History,
+  Info,
+  XCircle,
+} from "lucide-react";
 
 const { Text } = Typography;
 
@@ -69,10 +75,7 @@ export const ActivityLog = ({ logs, onClear }: ActivityLogProps) => {
                   {item.action}
                 </Text>
                 {item.details && (
-                  <Text
-                    type="secondary"
-                    className="text-xs truncate block"
-                  >
+                  <Text type="secondary" className="text-xs truncate block">
                     {item.details}
                   </Text>
                 )}

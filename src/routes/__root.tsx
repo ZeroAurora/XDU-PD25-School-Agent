@@ -21,7 +21,7 @@ function RootLayout() {
       <Header className="flex items-center flex-none">
         <div className="text-white text-lg font-bold mr-10">校园活动助手</div>
         <Menu
-          theme="dark"  
+          theme="dark"
           mode="horizontal"
           defaultSelectedKeys={["home"]}
           className="flex-1 min-w-0"
