@@ -62,7 +62,6 @@ class StatsResponse(BaseModel):
     last_updated: str
 
 
-_retriever_cache = None
 _emb_cache = None
 
 
@@ -370,10 +369,9 @@ async def delete_document(doc_id: str):
 async def delete_all_documents():
     """Delete all documents from the collection (keep collection)."""
     r = get_retr()
-    name = settings.chroma_collection
     try:
         # Get all document IDs
-        results = await r.query("", k=10000)
+        results = await r.get_all()
         ids = [doc.get("id") for doc in results if doc.get("id")]
         
         # Filter out None values and ensure all IDs are strings
@@ -392,7 +390,7 @@ async def export_collection():
     """Export all documents from collection as JSON."""
     r = get_retr()
     try:
-        results = await r.query("", k=10000)
+        results = await r.get_all()
         documents = [
             {
                 "id": doc.get("id", ""),
@@ -418,7 +416,6 @@ async def batch_ingest(request: BatchIngestRequest):
     options = request.options or {}
     
     skip_duplicates = options.get("skip_duplicates", False)
-    overwrite = options.get("overwrite", False)
     
     count = 0
     skipped = 0
@@ -470,7 +467,7 @@ async def clear_schedule_events():
     
     # Get all schedule documents
     try:
-        results = await retriever.query("", k=10000)
+        results = await retriever.get_all()
         schedule_ids = []
         
         for doc in results:

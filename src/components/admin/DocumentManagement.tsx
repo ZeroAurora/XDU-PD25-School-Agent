@@ -1,5 +1,5 @@
-import { Card, Table, Button, Space, Tooltip, Popconfirm } from "antd";
-import { FileText, Download, Delete, Eye } from "lucide-react";
+import { Button, Card, Popconfirm, Space, Table, Tooltip } from "antd";
+import { Delete, Download, Eye, FileText } from "lucide-react";
 
 export interface RAGDocument {
   id: string;
@@ -39,7 +39,7 @@ export const DocumentManagement = ({
       width: 120,
       render: (id: string) => (
         <Tooltip title={id}>
-          <code className="text-xs">{id.slice(0, 16)}...</code>
+          <code className="text-xs">{id}</code>
         </Tooltip>
       ),
     },

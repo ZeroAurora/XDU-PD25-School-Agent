@@ -150,9 +150,9 @@ class Settings(BaseModel):
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/schedule/events` | GET | List all events |
+| `/api/schedule/events` | GET | List all events from ChromaDB |
 | `/api/schedule/events` | POST | Create a new event |
-| `/api/schedule/events/{id}` | GET | Get a single event |
+| `/api/schedule/events/{id}` | GET | Get a single event from ChromaDB |
 | `/api/schedule/events/{id}` | PUT | Update an event |
 | `/api/schedule/events/{id}` | DELETE | Delete an event |
 | `/api/schedule/search` | GET | Search events using RAG |
@@ -171,7 +171,7 @@ interface ScheduleEvent {
 }
 ```
 
-**RAG Integration:** Schedule events are automatically ingested into the RAG vector store when created/updated, enabling AI-powered search and recommendations.
+**Database Integration:** Schedule events are stored in ChromaDB. All read operations query from ChromaDB, enabling RAG-powered search and recommendations.
 
 ### Agent Chat
 

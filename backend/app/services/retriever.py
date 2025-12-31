@@ -21,6 +21,35 @@ class ChromaRetriever:
         if self._embedder is None:
             self._embedder = Embedder()
         return self._embedder
+    
+    async def get_all(self) -> list[dict]:
+        """获取所有文档"""
+        raw_result: dict = dict(self.collection.get(
+            include=[
+                "documents",
+                "metadatas",
+                "uris",
+            ],
+            limit=1000000,
+        ))
+        
+        ids = raw_result.get("ids", [[]])
+        docs = raw_result.get("documents", [[]])
+        metas = raw_result.get("metadatas", [[]])
+        
+        # Handle empty results
+        if not ids:
+            return []
+        
+        # Build row-first list of objects
+        return [
+            {
+                "id": id_,
+                "document": doc,
+                "metadata": meta or {},
+            }
+            for id_, doc, meta in zip(ids, docs, metas)
+        ]
 
     async def upsert(self, docs, metadatas, ids):
         # 1) 计算嵌入 - 使用异步版本

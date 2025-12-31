@@ -22,10 +22,6 @@ class EventType(str, Enum):
 router = APIRouter()
 
 
-# Path to sample events data
-SAMPLE_EVENTS_FILE = Path(__file__).parent.parent.parent / "sample_data" / "sample_campus_events.json"
-
-
 class ScheduleEvent(BaseModel):
     id: str
     title: str
@@ -57,15 +53,11 @@ class UpdateEventRequest(BaseModel):
     description: Optional[str] = None
 
 
-# In-memory storage for schedule events (could be replaced with a database)
-_events: dict[str, ScheduleEvent] = {}
-
-
 def _event_to_text(event: ScheduleEvent) -> str:
     """Convert event to searchable text for RAG."""
     parts = [
         f"{event.date} {event.startTime}-{event.endTime}",
-        f"【{event.type}】{event.title}",
+        f"【{event.type.value}】{event.title}",
     ]
     if event.location:
         parts.append(f"地点：{event.location}")
@@ -121,36 +113,93 @@ async def create_event(request: CreateEventRequest = Body(...)):
         description=request.description,
     )
 
-    _events[event_id] = event
     await _ingest_to_rag(event)
 
     return event
 
 
+async def _get_all_events_from_rag() -> list[ScheduleEvent]:
+    """Get all schedule events from ChromaDB."""
+    retriever = get_retriever()
+    results = await retriever.get_all()
+    
+    events = []
+    for r in results:
+        doc_id = r.get("id", "")
+        if doc_id.startswith("schedule:"):
+            metadata = r.get("metadata", {})
+            # Reconstruct event from metadata
+            event_id = doc_id.replace("schedule:", "")
+            try:
+                event = ScheduleEvent(
+                    id=event_id,
+                    title=metadata.get("title", ""),
+                    date=metadata.get("date", ""),
+                    startTime=metadata.get("startTime", ""),
+                    endTime=metadata.get("endTime", ""),
+                    location=metadata.get("location"),
+                    type=EventType(metadata.get("type", "announcement")),
+                    description=metadata.get("description"),
+                )
+                events.append(event)
+            except (ValueError, TypeError):
+                # Skip events with invalid metadata
+                continue
+    
+    return events
+
+
 @router.get("/events")
 async def list_events(date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)")):
-    """List all events, optionally filtered by date."""
-    events = list(_events.values())
+    """List all events from ChromaDB, optionally filtered by date."""
+    events = await _get_all_events_from_rag()
     if date:
         events = [e for e in events if e.date == date]
     return {"events": events, "count": len(events)}
 
 
+async def _get_event_from_rag(event_id: str) -> Optional[ScheduleEvent]:
+    """Get a single event from ChromaDB by ID."""
+    retriever = get_retriever()
+    results = await retriever.get_all()
+    
+    for r in results:
+        doc_id = r.get("id", "")
+        if doc_id == f"schedule:{event_id}":
+            metadata = r.get("metadata", {})
+            try:
+                return ScheduleEvent(
+                    id=event_id,
+                    title=metadata.get("title", ""),
+                    date=metadata.get("date", ""),
+                    startTime=metadata.get("startTime", ""),
+                    endTime=metadata.get("endTime", ""),
+                    location=metadata.get("location"),
+                    type=EventType(metadata.get("type", "announcement")),
+                    description=metadata.get("description"),
+                )
+            except (ValueError, TypeError):
+                return None
+    
+    return None
+
+
 @router.get("/events/{event_id}", response_model=ScheduleEvent)
 async def get_event(event_id: str):
-    """Get a single event by ID."""
-    if event_id not in _events:
+    """Get a single event by ID from ChromaDB."""
+    event = await _get_event_from_rag(event_id)
+    if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    return _events[event_id]
+    return event
 
 
 @router.put("/events/{event_id}", response_model=ScheduleEvent)
 async def update_event(event_id: str, request: UpdateEventRequest = Body(...)):
     """Update an event and re-ingest into RAG."""
-    if event_id not in _events:
+    old_event = await _get_event_from_rag(event_id)
+    if old_event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    old_event = _events[event_id]
     updated_event = ScheduleEvent(
         id=event_id,
         title=request.title or old_event.title,
@@ -162,7 +211,6 @@ async def update_event(event_id: str, request: UpdateEventRequest = Body(...)):
         description=request.description or old_event.description,
     )
 
-    _events[event_id] = updated_event
     await _ingest_to_rag(updated_event)
 
     return updated_event
@@ -170,11 +218,11 @@ async def update_event(event_id: str, request: UpdateEventRequest = Body(...)):
 
 @router.delete("/events/{event_id}")
 async def delete_event(event_id: str):
-    """Delete an event and remove from RAG."""
-    if event_id not in _events:
+    """Delete an event from RAG."""
+    event = await _get_event_from_rag(event_id)
+    if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    del _events[event_id]
     await _remove_from_rag(event_id)
 
     return {"ok": True, "deleted": event_id}
@@ -186,35 +234,26 @@ async def search_events(q: str = Query(..., description="Search query"), k: int 
     retriever = get_retriever()
     results = await retriever.query(q, k=k)
 
-    # Extract event IDs and fetch full event data
+    # Extract event IDs and fetch full event data from ChromaDB
     events = []
     for r in results:
-        event_id = r.get("id", "").replace("schedule:", "")
-        if event_id and event_id in _events:
-            events.append(_events[event_id])
+        doc_id = r.get("id", "")
+        if doc_id.startswith("schedule:"):
+            event_id = doc_id.replace("schedule:", "")
+            metadata = r.get("metadata", {})
+            try:
+                event = ScheduleEvent(
+                    id=event_id,
+                    title=metadata.get("title", ""),
+                    date=metadata.get("date", ""),
+                    startTime=metadata.get("startTime", ""),
+                    endTime=metadata.get("endTime", ""),
+                    location=metadata.get("location"),
+                    type=EventType(metadata.get("type", "announcement")),
+                    description=metadata.get("description"),
+                )
+                events.append(event)
+            except (ValueError, TypeError):
+                continue
 
     return {"events": events, "count": len(events)}
-
-
-def _load_sample_events_from_json() -> list[dict]:
-    """Load sample events from JSON file."""
-    if SAMPLE_EVENTS_FILE.exists():
-        with open(SAMPLE_EVENTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-
-def _create_event_from_dict(data: dict) -> ScheduleEvent:
-    """Create a ScheduleEvent from a dictionary (for JSON data)."""
-    return ScheduleEvent(
-        id=data.get("id", str(uuid.uuid4())),
-        title=data["title"],
-        date=data["date"],
-        startTime=data["startTime"],
-        endTime=data["endTime"],
-        location=data.get("location"),
-        type=data["type"],
-        description=data.get("description"),
-    )
-
-
