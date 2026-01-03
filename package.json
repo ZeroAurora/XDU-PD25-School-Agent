@@ -13,6 +13,7 @@
   "dependencies": {
     "@ant-design/cssinjs": "^2.0.1",
     "@ant-design/x": "^2.1.1",
+    "@ant-design/x-markdown": "^2.1.2",
     "@ant-design/x-sdk": "^2.1.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "^0.9.0",

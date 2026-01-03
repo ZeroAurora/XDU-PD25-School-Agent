@@ -5,6 +5,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { Bubble, type BubbleListProps, Sender, Welcome } from "@ant-design/x";
+import { XMarkdown } from "@ant-design/x-markdown";
 import { createFileRoute } from "@tanstack/react-router";
 import { Avatar, Button, Card, Collapse, Flex, Tag, Typography } from "antd";
 import { useCallback, useState } from "react";
@@ -106,7 +107,7 @@ function RouteComponent() {
 
       return (
         <div>
-          <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+          <XMarkdown content={msg.content} />
 
           {hasContexts && (
             <div className="mt-3">
