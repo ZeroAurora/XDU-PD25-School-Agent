@@ -7,14 +7,12 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 
-class SiliconFlowEmbeddingError(Exception):
-    """SiliconFlow embedding API错误"""
-
+class EmbeddingAPIError(Exception):
     pass
 
 
 class Embedder:
-    """SiliconFlow API-based embedder with retry logic and caching."""
+    """API-based embedder with retry logic and caching."""
 
     def __init__(self):
         self._client: Optional[httpx.AsyncClient] = None
@@ -50,7 +48,6 @@ class Embedder:
         reraise=True,
     )
     async def _call_embedding_api(self, texts: List[str]) -> List[List[float]]:
-        """调用SiliconFlow embedding API with retry"""
         client = await self._get_client()
 
         payload = {
@@ -65,26 +62,26 @@ class Embedder:
 
             data = response.json()
             if "data" not in data:
-                raise SiliconFlowEmbeddingError(f"API响应格式错误: {data}")
+                raise EmbeddingAPIError(f"API响应格式错误: {data}")
 
             embeddings = []
             for item in data["data"]:
                 if "embedding" in item:
                     embeddings.append(item["embedding"])
                 else:
-                    raise SiliconFlowEmbeddingError(f"响应中缺少embedding: {item}")
+                    raise EmbeddingAPIError(f"响应中缺少embedding: {item}")
 
             return embeddings
 
         except httpx.HTTPStatusError as e:
             error_msg = f"API请求失败: {e.response.status_code} - {e.response.text}"
-            raise SiliconFlowEmbeddingError(error_msg)
+            raise EmbeddingAPIError(error_msg)
         except httpx.RequestError as e:
             error_msg = f"网络请求错误: {str(e)}"
-            raise SiliconFlowEmbeddingError(error_msg)
+            raise EmbeddingAPIError(error_msg)
         except Exception as e:
             error_msg = f"未知错误: {str(e)}"
-            raise SiliconFlowEmbeddingError(error_msg)
+            raise EmbeddingAPIError(error_msg)
 
     async def _get_model_dimension(self) -> int:
         """获取模型embedding维度"""
@@ -135,7 +132,7 @@ class Embedder:
 
             return np.array(embeddings, dtype="float32")
 
-        except SiliconFlowEmbeddingError as e:
+        except EmbeddingAPIError as e:
             # 如果API调用失败，返回零向量以避免系统崩溃
             print(f"Embedding API调用失败: {e}")
             dim = await self._get_model_dimension()
