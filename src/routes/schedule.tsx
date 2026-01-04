@@ -49,6 +49,17 @@ interface ScheduleFormValues {
   description?: string;
 }
 
+interface ScheduleEvent {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  location?: string | null;
+  type: string;
+  description?: string | null;
+}
+
 const eventTypeConfig = {
   course: { color: "blue", label: "课程" },
   activity: { color: "green", label: "活动" },
@@ -75,18 +86,7 @@ function RouteComponent() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingEvent, setEditingEvent] = useState<{ id: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<
-    Array<{
-      id: string;
-      title: string;
-      date: string;
-      startTime: string;
-      endTime: string;
-      location?: string | null;
-      type: string;
-      description?: string | null;
-    }>
-  >([]);
+  const [searchResults, setSearchResults] = useState<Array<ScheduleEvent>>([]);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [form] = Form.useForm<ScheduleFormValues>();
 
@@ -168,7 +168,7 @@ function RouteComponent() {
   };
 
   // 打开编辑日程弹窗
-  const openEditModal = (event: (typeof events)[0]) => {
+  const openEditModal = (event: ScheduleEvent) => {
     setIsEditMode(true);
     setEditingEvent(event);
     form.setFieldsValue({
@@ -244,7 +244,7 @@ function RouteComponent() {
   };
 
   // 从搜索结果添加到日程
-  const handleAddFromSearch = async (event: (typeof searchResults)[0]) => {
+  const handleAddFromSearch = async (event: ScheduleEvent) => {
     try {
       await createEventMutation.mutateAsync({
         title: event.title,
