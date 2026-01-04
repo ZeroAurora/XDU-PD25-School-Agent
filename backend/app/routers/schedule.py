@@ -1,6 +1,5 @@
-import json
+from datetime import datetime
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from ..services.retriever import get_retriever
@@ -8,7 +7,6 @@ from pydantic import BaseModel
 from typing import Optional
 
 from enum import Enum
-from typing import Optional, Literal
 
 
 class EventType(str, Enum):
@@ -231,8 +229,23 @@ async def delete_event(event_id: str):
 @router.get("/search")
 async def search_events(q: str = Query(..., description="Search query"), k: int = 5):
     """Search schedule events using RAG."""
+    now = datetime.now()
+    current_date = now.strftime("%Y年%m月%d日")
+    weekday = ["一", "二", "三", "四", "五", "六", "日"][now.weekday()]
+    month = now.month
+    if 3 <= month <= 5:
+        season = "春季"
+    elif 6 <= month <= 8:
+        season = "夏季"
+    elif 9 <= month <= 11:
+        season = "秋季"
+    else:
+        season = "冬季"
+    query = (
+        f"当前时间：{current_date} 星期{weekday} {now.strftime('%H:%M')}（{season}），查询与当前时间最接近的活动。用户查询：{q}。"
+    )
     retriever = get_retriever()
-    results = await retriever.query(q, k=k)
+    results = await retriever.query(query, k=k)
 
     # Extract event IDs and fetch full event data from ChromaDB
     events = []
