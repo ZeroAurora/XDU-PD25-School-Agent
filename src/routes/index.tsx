@@ -37,6 +37,8 @@ function RouteComponent() {
     null,
   );
 
+  const messagesRef = useRef<Message[]>([]);
+
   const charQueueRef = useRef<string[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeAssistantIdRef = useRef<string | null>(null);
@@ -102,6 +104,10 @@ function RouteComponent() {
   }, [stopFlusher]);
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     return () => {
       stopFlusher();
     };
@@ -124,6 +130,16 @@ function RouteComponent() {
   const handleRequest = useCallback(
     async (userMessage: string) => {
       if (!userMessage.trim() || isStreaming) return;
+
+      // Build multi-turn history for backend (keep it small)
+      const historyTurns = messagesRef.current
+        .filter((m) => m.content.trim())
+        .slice(-12)
+        .map((m) => ({ role: m.role, content: m.content }));
+      const requestTurns = [
+        ...historyTurns,
+        { role: "user" as const, content: userMessage },
+      ];
 
       const userMsgId = `user-${Date.now()}`;
       const assistantMsgId = `assistant-${Date.now()}`;
@@ -155,7 +171,12 @@ function RouteComponent() {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ message: userMessage, k: 5, stream: true }),
+          body: JSON.stringify({
+            message: userMessage,
+            messages: requestTurns,
+            k: 5,
+            stream: true,
+          }),
         });
 
         if (!response.ok) {

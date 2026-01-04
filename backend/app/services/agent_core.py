@@ -2,7 +2,14 @@ from __future__ import annotations
 from datetime import datetime
 from .retriever import ChromaRetriever
 
+from typing import Literal, TypedDict
+
 retriever = ChromaRetriever()
+
+
+class ChatTurn(TypedDict):
+    role: Literal["user", "assistant"]
+    content: str
 
 
 def get_system_prompt() -> str:
@@ -29,25 +36,62 @@ def get_system_prompt() -> str:
     )
 
 
-async def chat_once(user_msg: str, k: int = 5, extra_context: str = "") -> dict:
-    prepared = await prepare_chat_messages(user_msg, k=k, extra_context=extra_context)
-    if not prepared:
-        return {"reply": "请先输入你的问题。", "k": k, "hits": 0, "contexts": []}
+def _normalize_history(history: list[dict] | None) -> list[ChatTurn]:
+    if not history:
+        return []
+    out: list[ChatTurn] = []
+    for t in history:
+        role = t.get("role")
+        content = (t.get("content") or "").strip()
+        if role not in ("user", "assistant"):
+            continue
+        if not content:
+            continue
+        out.append({"role": role, "content": content})
+    return out
 
-    from .llm import chat_completion
 
-    messages, contexts, hits = prepared
-    reply = chat_completion(messages)
-    return {"k": k, "hits": hits, "reply": reply, "contexts": contexts}
+def _trim_history(
+    history: list[ChatTurn],
+    *,
+    max_messages: int = 20,
+    max_chars: int = 8000,
+) -> list[ChatTurn]:
+    # Keep the most recent context within rough size limits.
+    if not history:
+        return []
+    tail = history[-max_messages:]
+    total = 0
+    kept_rev: list[ChatTurn] = []
+    for t in reversed(tail):
+        total += len(t.get("content", ""))
+        kept_rev.append(t)
+        if total >= max_chars:
+            break
+    return list(reversed(kept_rev))
 
 
-async def prepare_chat_messages(
-    user_msg: str, k: int = 5, extra_context: str = ""
+def _last_user_message(history: list[ChatTurn]) -> str | None:
+    for t in reversed(history):
+        if t.get("role") == "user" and (t.get("content") or "").strip():
+            return (t.get("content") or "").strip()
+    return None
+
+
+async def prepare_chat_messages_from_history(
+    history: list[dict] | None,
+    *,
+    k: int = 5,
+    extra_context: str = "",
 ) -> tuple[list[dict], list[dict], int] | None:
-    if not user_msg or not user_msg.strip():
+    normalized = _normalize_history(history)
+    normalized = _trim_history(normalized)
+
+    query_text = _last_user_message(normalized)
+    if not query_text:
         return None
 
-    search_res = await retriever.query(user_msg, k=k)
+    search_res = await retriever.query(query_text, k=k)
     docs = [r.get("document", "") for r in search_res] if search_res else []
     metas = [r.get("metadata", {}) for r in search_res] if search_res else []
 
@@ -56,17 +100,25 @@ async def prepare_chat_messages(
         title = (m or {}).get("title") or (m or {}).get("name") or f"Doc{i + 1}"
         context_lines.append(f"[{i + 1}] {title}: {d}")
 
-    context_block = "\n".join(context_lines)
+    context_block = "\n".join(context_lines).strip()
     if extra_context:
-        context_block += f"\n[EXTRA] {extra_context}"
+        context_block = (
+            f"{context_block}\n[EXTRA] {extra_context}" if context_block else f"[EXTRA] {extra_context}"
+        )
 
-    messages = [
+    rag_msg = (
+        "以下为与你最近一条用户问题最相关的检索片段。回答时请结合对话历史与片段信息；"
+        "若片段不足以支撑结论，请明确说明假设或不确定点。\n\n"
+        + (context_block if context_block else "（无检索结果）")
+    )
+
+    messages: list[dict] = [
         {"role": "system", "content": get_system_prompt()},
-        {
-            "role": "user",
-            "content": f"用户问题：{user_msg}\n\n检索片段（最多{len(docs)}条）：\n{context_block}\n\n请基于片段作答；若片段不足，请明确说明假设。",
-        },
+        {"role": "system", "content": rag_msg},
     ]
+
+    # Append conversation history (user/assistant only)
+    messages.extend({"role": t["role"], "content": t["content"]} for t in normalized)
 
     contexts = [{"text": d, "metadata": m} for d, m in zip(docs, metas)]
     return messages, contexts, len(docs)

@@ -41,6 +41,11 @@ export interface ChatMessage {
   }>;
 }
 
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface DocumentListResponse {
   total: number;
   limit: number;
@@ -71,12 +76,16 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
 // ==================== Agent/Chat Hooks ====================
 
 export function useChat() {
-  return useMutation<ChatMessage, Error, { message: string; k?: number }>({
-    mutationFn: async ({ message, k = 5 }) => {
+  return useMutation<
+    ChatMessage,
+    Error,
+    { message: string; k?: number; messages?: ChatTurn[] }
+  >({
+    mutationFn: async ({ message, k = 5, messages }) => {
       return fetchApi<ChatMessage>(`${API_BASE}/agent/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, k }),
+        body: JSON.stringify({ message, messages, k }),
       });
     },
   });

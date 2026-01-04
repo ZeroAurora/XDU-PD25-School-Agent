@@ -184,11 +184,26 @@ interface ScheduleEvent {
 #### Chat Request Body
 ```typescript
 {
-  message: string;        // User message
-  k?: number;             // Number of context results (default: 5)
-  extra_context?: string; // Additional context
+  // Legacy single-turn field (kept for compatibility)
+  message?: string;
+
+  // Multi-turn conversation history (preferred)
+  // The backend will use the last user turn as the retrieval query,
+  // and send system prompt + retrieved context + full history to the LLM.
+  messages?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+
+  k?: number;              // Number of context results (default: 5)
+  extra_context?: string;  // Additional context
+  stream?: boolean;        // Whether to use SSE streaming (default: false)
 }
 ```
+
+Notes:
+- If `messages` is provided, the server will ignore `message` and use `messages` as the conversation context.
+- If `messages` is omitted, the endpoint behaves like single-turn chat using `message`.
 
 #### Chat Response
 ```typescript

@@ -1,16 +1,21 @@
 from fastapi import APIRouter, Body
 from fastapi.responses import StreamingResponse
-from ..services.agent_core import prepare_chat_messages
+from ..services.agent_core import prepare_chat_messages_from_history
 from ..services.llm import chat_completion, chat_completion_stream
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 import json
 
 router = APIRouter()
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatPayload(BaseModel):
-    message: str
+    messages: list[ChatTurn]
     k: Optional[int] = 5
     extra_context: Optional[str] = ""
     stream: Optional[bool] = False
@@ -18,12 +23,17 @@ class ChatPayload(BaseModel):
 
 @router.post("/chat")
 async def chat(payload: ChatPayload = Body(...)):
-    user_msg = payload.message
     k = payload.k if payload.k is not None else 5
     extra_context = payload.extra_context if payload.extra_context is not None else ""
     stream = bool(payload.stream)
 
-    prepared = await prepare_chat_messages(user_msg, k=k, extra_context=extra_context)
+    history = [t.model_dump() for t in payload.messages]
+    prepared = await prepare_chat_messages_from_history(
+        history,
+        k=k,
+        extra_context=extra_context,
+    )
+
     if not prepared:
         # Keep legacy behavior for empty messages
         return {"reply": "请先输入你的问题。", "k": k, "hits": 0, "contexts": []}
