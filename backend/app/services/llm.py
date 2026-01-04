@@ -16,3 +16,27 @@ def chat_completion(messages: list[dict], model: str | None = None) -> str:
     m = model or settings.openai_model
     resp = client.chat.completions.create(model=m, messages=messages)  # type: ignore
     return resp.choices[0].message.content or ""
+
+
+def chat_completion_stream(messages: list[dict], model: str | None = None):
+    """Yield incremental text deltas from the model.
+
+    This is a synchronous generator; Starlette will iterate it in a threadpool
+    when used with StreamingResponse.
+    """
+
+    client = get_client()
+    m = model or settings.openai_model
+    stream = client.chat.completions.create(
+        model=m,
+        messages=messages,
+        stream=True,
+    )  # type: ignore
+
+    for chunk in stream:
+        try:
+            delta = chunk.choices[0].delta.content
+        except Exception:  # noqa: BLE001
+            delta = None
+        if delta:
+            yield delta

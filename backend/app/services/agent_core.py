@@ -1,6 +1,5 @@
 from __future__ import annotations
 from datetime import datetime
-from .llm import chat_completion
 from .retriever import ChromaRetriever
 
 retriever = ChromaRetriever()
@@ -31,15 +30,28 @@ def get_system_prompt() -> str:
 
 
 async def chat_once(user_msg: str, k: int = 5, extra_context: str = "") -> dict:
-    if not user_msg:
-        return {"reply": "请先输入你的问题。"}
+    prepared = await prepare_chat_messages(user_msg, k=k, extra_context=extra_context)
+    if not prepared:
+        return {"reply": "请先输入你的问题。", "k": k, "hits": 0, "contexts": []}
+
+    from .llm import chat_completion
+
+    messages, contexts, hits = prepared
+    reply = chat_completion(messages)
+    return {"k": k, "hits": hits, "reply": reply, "contexts": contexts}
+
+
+async def prepare_chat_messages(
+    user_msg: str, k: int = 5, extra_context: str = ""
+) -> tuple[list[dict], list[dict], int] | None:
+    if not user_msg or not user_msg.strip():
+        return None
 
     search_res = await retriever.query(user_msg, k=k)
-    # Extract documents and metadata from list format
     docs = [r.get("document", "") for r in search_res] if search_res else []
     metas = [r.get("metadata", {}) for r in search_res] if search_res else []
 
-    context_lines = []
+    context_lines: list[str] = []
     for i, (d, m) in enumerate(zip(docs, metas)):
         title = (m or {}).get("title") or (m or {}).get("name") or f"Doc{i + 1}"
         context_lines.append(f"[{i + 1}] {title}: {d}")
@@ -56,10 +68,5 @@ async def chat_once(user_msg: str, k: int = 5, extra_context: str = "") -> dict:
         },
     ]
 
-    reply = chat_completion(messages)
-    return {
-        "k": k,
-        "hits": len(docs),
-        "reply": reply,
-        "contexts": [{"text": d, "metadata": m} for d, m in zip(docs, metas)],
-    }
+    contexts = [{"text": d, "metadata": m} for d, m in zip(docs, metas)]
+    return messages, contexts, len(docs)

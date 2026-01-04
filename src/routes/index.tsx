@@ -8,8 +8,7 @@ import { Bubble, type BubbleListProps, Sender, Welcome } from "@ant-design/x";
 import { XMarkdown } from "@ant-design/x-markdown";
 import { createFileRoute } from "@tanstack/react-router";
 import { Avatar, Button, Card, Collapse, Flex, Tag, Typography } from "antd";
-import { useCallback, useState } from "react";
-import { useChat } from "@/hooks/useApi";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const { Text } = Typography;
 
@@ -33,8 +32,80 @@ function RouteComponent() {
   const [content, setContent] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null,
+  );
 
-  const chatMutation = useChat();
+  const charQueueRef = useRef<string[]>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeAssistantIdRef = useRef<string | null>(null);
+  const pendingContextsRef = useRef<ChatContext[] | null>(null);
+  const streamEndedRef = useRef(false);
+
+  const stopFlusher = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+  }, []);
+
+  const startFlusher = useCallback(() => {
+    if (flushTimerRef.current) return;
+
+    // 逐字刷新间隔（越小越快）
+    const intervalMs = 30;
+
+    flushTimerRef.current = setInterval(() => {
+      const assistantId = activeAssistantIdRef.current;
+      if (!assistantId) {
+        stopFlusher();
+        return;
+      }
+
+      if (charQueueRef.current.length > 0) {
+        const ch = charQueueRef.current.shift();
+        if (!ch) return;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: `${msg.content}${ch}` }
+              : msg,
+          ),
+        );
+        return;
+      }
+
+      // 队列已刷空，且服务端已结束：收尾（flush markdown cache + 绑定来源 + 解除 loading）
+      if (streamEndedRef.current) {
+        const contexts = pendingContextsRef.current;
+        pendingContextsRef.current = null;
+        streamEndedRef.current = false;
+
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantId) return msg;
+            const nextContexts = contexts ?? msg.contexts;
+            const nextContent = msg.content.trim()
+              ? msg.content
+              : "抱歉，无法获取回复。";
+            return { ...msg, content: nextContent, contexts: nextContexts };
+          }),
+        );
+
+        activeAssistantIdRef.current = null;
+        setStreamingMessageId(null);
+        setIsStreaming(false);
+        stopFlusher();
+      }
+    }, intervalMs);
+  }, [stopFlusher]);
+
+  useEffect(() => {
+    return () => {
+      stopFlusher();
+    };
+  }, [stopFlusher]);
 
   // Toggle expanded state for contexts
   const toggleExpanded = useCallback((messageId: string) => {
@@ -52,7 +123,7 @@ function RouteComponent() {
   // Handle chat request
   const handleRequest = useCallback(
     async (userMessage: string) => {
-      if (!userMessage.trim() || chatMutation.isPending) return;
+      if (!userMessage.trim() || isStreaming) return;
 
       const userMsgId = `user-${Date.now()}`;
       const assistantMsgId = `assistant-${Date.now()}`;
@@ -70,20 +141,94 @@ function RouteComponent() {
       ]);
 
       try {
-        const data = await chatMutation.mutateAsync({ message: userMessage });
+        setIsStreaming(true);
+        setStreamingMessageId(assistantMsgId);
+        activeAssistantIdRef.current = assistantMsgId;
+        pendingContextsRef.current = null;
+        streamEndedRef.current = false;
+        charQueueRef.current = [];
+        startFlusher();
 
-        // Update assistant message with response
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  content: data.reply || "抱歉，无法获取回复。",
-                  contexts: data.contexts || [],
-                }
-              : msg,
-          ),
-        );
+        const response = await fetch("/api/agent/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({ message: userMessage, k: 5, stream: true }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        if (!response.body) {
+          throw new Error("浏览器不支持流式响应");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        const applyDelta = (delta: string) => {
+          if (!delta) return;
+          // 将 chunk 拆成字符队列，客户端逐字输出
+          charQueueRef.current.push(...Array.from(delta));
+          startFlusher();
+        };
+
+        const applyContexts = (contexts: ChatContext[]) => {
+          pendingContextsRef.current = contexts;
+        };
+
+        const handleEventText = (eventText: string) => {
+          const lines = eventText
+            .split("\n")
+            .map((l) => l.trimEnd())
+            .filter(Boolean);
+          const dataLines = lines
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice("data:".length).trimStart());
+          if (dataLines.length === 0) return;
+
+          const dataStr = dataLines.join("\n");
+          const evt = JSON.parse(dataStr) as
+            | { type: "meta"; k: number; hits: number }
+            | { type: "delta"; delta: string }
+            | { type: "done"; contexts: ChatContext[] }
+            | { type: "error"; message: string };
+
+          if (evt.type === "delta") {
+            applyDelta(evt.delta);
+          } else if (evt.type === "done") {
+            applyContexts(evt.contexts || []);
+            streamEndedRef.current = true;
+            startFlusher();
+          } else if (evt.type === "error") {
+            throw new Error(evt.message || "流式响应错误");
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            if (part.trim()) handleEventText(part);
+          }
+        }
+
+        // Flush any remaining buffered event
+        if (buffer.trim()) {
+          handleEventText(buffer);
+        }
+
+        // 如果服务端没发送 done，也至少触发一次收尾
+        streamEndedRef.current = true;
+        startFlusher();
       } catch {
         // Update assistant message with error
         setMessages((prev) =>
@@ -93,9 +238,20 @@ function RouteComponent() {
               : msg,
           ),
         );
+
+        // 终止逐字刷新状态
+        charQueueRef.current = [];
+        pendingContextsRef.current = null;
+        streamEndedRef.current = false;
+        activeAssistantIdRef.current = null;
+        stopFlusher();
+        setStreamingMessageId(null);
+        setIsStreaming(false);
+      } finally {
+        // 正常结束由 flusher 在队列刷空后关闭 isStreaming + streamingMessageId
       }
     },
-    [chatMutation],
+    [isStreaming, startFlusher, stopFlusher],
   );
 
   // Render message content with expandable sources
@@ -104,10 +260,14 @@ function RouteComponent() {
       const contexts = msg.contexts || [];
       const hasContexts = contexts.length > 0;
       const isExpanded = expandedItems.has(msg.id);
+      const hasNextChunk = streamingMessageId === msg.id;
 
       return (
         <div>
-          <XMarkdown content={msg.content} />
+          <XMarkdown
+            content={msg.content}
+            streaming={{ hasNextChunk, enableAnimation: true }}
+          />
 
           {hasContexts && (
             <div className="mt-3">
@@ -169,7 +329,7 @@ function RouteComponent() {
         </div>
       );
     },
-    [expandedItems, toggleExpanded],
+    [expandedItems, streamingMessageId, toggleExpanded],
   );
 
   // Role configuration for Bubble.List
@@ -194,8 +354,7 @@ function RouteComponent() {
     key: msg.id,
     role: msg.role === "user" ? "user" : "assistant",
     content: msg.role === "user" ? msg.content : renderMessageContent(msg),
-    loading:
-      msg.role === "assistant" && msg.content === "" && chatMutation.isPending,
+    loading: msg.role === "assistant" && msg.content === "" && isStreaming,
   }));
 
   return (
@@ -227,7 +386,7 @@ function RouteComponent() {
 
       <div style={{ paddingTop: 16, paddingBottom: 24 }}>
         <Sender
-          loading={chatMutation.isPending}
+          loading={isStreaming}
           value={content}
           onChange={setContent}
           onSubmit={(nextContent) => {
