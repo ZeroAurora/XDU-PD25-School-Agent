@@ -5,9 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export interface ScheduleEvent {
   id: string;
   title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
+  date: number;
+  startTime: number;
+  endTime: number;
   location?: string | null;
   type: string;
   description?: string | null;

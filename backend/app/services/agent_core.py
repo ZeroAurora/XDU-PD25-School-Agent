@@ -1,6 +1,9 @@
 from __future__ import annotations
 from datetime import datetime
 from .retriever import ChromaRetriever
+from .time_constraints import build_chroma_where_from_query
+from functools import partial
+from anyio import to_thread
 
 from typing import Literal, TypedDict
 
@@ -91,9 +94,21 @@ async def prepare_chat_messages_from_history(
     if not query_text:
         return None
 
-    search_res = await retriever.query(query_text, k=k)
+    # Time constraint extraction (OpenAI JSON mode) + metadata filtering
+    now = datetime.now()
+    where, _constraints = await to_thread.run_sync(
+        partial(build_chroma_where_from_query, query_text, now=now)
+    )
+
+    search_res = await retriever.query(query_text, k=k, where=where)
     docs = [r.get("document", "") for r in search_res] if search_res else []
     metas = [r.get("metadata", {}) for r in search_res] if search_res else []
+
+    # If no results, do a fallback search without time constraints
+    if not docs:
+        search_res = await retriever.query(query_text, k=k)
+        docs = [r.get("document", "") for r in search_res] if search_res else []
+        metas = [r.get("metadata", {}) for r in search_res] if search_res else []
 
     context_lines: list[str] = []
     for i, (d, m) in enumerate(zip(docs, metas)):
@@ -107,14 +122,12 @@ async def prepare_chat_messages_from_history(
         )
 
     rag_msg = (
-        "以下为与你最近一条用户问题最相关的检索片段。回答时请结合对话历史与片段信息；"
-        "若片段不足以支撑结论，请明确说明假设或不确定点。\n\n"
+        "以下是从校园活动知识库中检索到的相关信息，请结合这些信息回答用户的问题。\n"
         + (context_block if context_block else "（无检索结果）")
     )
 
     messages: list[dict] = [
-        {"role": "system", "content": get_system_prompt()},
-        {"role": "system", "content": rag_msg},
+        {"role": "system", "content": get_system_prompt() + "\n" + rag_msg},
     ]
 
     # Append conversation history (user/assistant only)

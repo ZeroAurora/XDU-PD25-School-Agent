@@ -52,12 +52,22 @@ interface ScheduleFormValues {
 interface ScheduleEvent {
   id: string;
   title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
+  date: number;
+  startTime: number;
+  endTime: number;
   location?: string | null;
   type: string;
   description?: string | null;
+}
+
+function dateIntToDisplay(date: number): string {
+  const s = String(date).padStart(8, "0");
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+}
+
+function timeIntToDisplay(time: number): string {
+  const s = String(time).padStart(4, "0");
+  return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
 }
 
 const eventTypeConfig = {
@@ -99,7 +109,7 @@ function RouteComponent() {
 
   // 按日期分组事件
   const eventsByDate = useMemo(() => {
-    const grouped: Record<string, typeof events> = {};
+    const grouped: Record<number, typeof events> = {};
     for (const event of events) {
       if (!grouped[event.date]) {
         grouped[event.date] = [];
@@ -111,15 +121,15 @@ function RouteComponent() {
 
   // 获取当前选中日期的事件
   const selectedDateEvents = useMemo(() => {
-    const dateKey = selectedDate.format("YYYY-MM-DD");
+    const dateKey = Number(selectedDate.format("YYYYMMDD"));
     return (eventsByDate[dateKey] || [])
       .slice()
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      .sort((a, b) => a.startTime - b.startTime);
   }, [selectedDate, eventsByDate]);
 
   // 日历单元格渲染
   const dateCellRender = (value: Dayjs) => {
-    const dateKey = value.format("YYYY-MM-DD");
+    const dateKey = Number(value.format("YYYYMMDD"));
     const dateEvents = eventsByDate[dateKey] || [];
 
     if (dateEvents.length === 0) return null;
@@ -174,9 +184,9 @@ function RouteComponent() {
     form.setFieldsValue({
       title: event.title,
       type: event.type,
-      date: dayjs(event.date, "YYYY-MM-DD"),
-      startTime: dayjs(event.startTime, "HH:mm"),
-      endTime: dayjs(event.endTime, "HH:mm"),
+      date: dayjs(String(event.date), "YYYYMMDD"),
+      startTime: dayjs(String(event.startTime).padStart(4, "0"), "HHmm"),
+      endTime: dayjs(String(event.endTime).padStart(4, "0"), "HHmm"),
       location: event.location || undefined,
       description: event.description || undefined,
     });
@@ -197,9 +207,9 @@ function RouteComponent() {
   const handleSubmitSchedule = async (values: ScheduleFormValues) => {
     const eventData = {
       title: values.title,
-      date: values.date.format("YYYY-MM-DD"),
-      startTime: values.startTime.format("HH:mm"),
-      endTime: values.endTime.format("HH:mm"),
+      date: Number(values.date.format("YYYYMMDD")),
+      startTime: Number(values.startTime.format("HHmm")),
+      endTime: Number(values.endTime.format("HHmm")),
       location: values.location,
       type: values.type,
       description: values.description,
@@ -353,7 +363,8 @@ function RouteComponent() {
                         <div className="flex items-center gap-4 text-sm text-gray-600">
                           <span className="flex items-center gap-1">
                             <Clock className="h-3.5 w-3.5" />
-                            {event.startTime} - {event.endTime}
+                            {timeIntToDisplay(event.startTime)} -{" "}
+                            {timeIntToDisplay(event.endTime)}
                           </span>
                           {event.location && (
                             <span className="flex items-center gap-1">
@@ -559,7 +570,7 @@ function RouteComponent() {
                       </Tag>
                     </div>
                   }
-                  description={`${event.date} ${event.startTime} - ${event.endTime}${event.location ? ` | ${event.location}` : ""}`}
+                  description={`${dateIntToDisplay(event.date)} ${timeIntToDisplay(event.startTime)} - ${timeIntToDisplay(event.endTime)}${event.location ? ` | ${event.location}` : ""}`}
                 />
               </List.Item>
             )}

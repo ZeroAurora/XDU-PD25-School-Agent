@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from ..config import settings
 from openai import OpenAI
+import json
+from typing import Any
 
 
 def get_client() -> OpenAI:
@@ -18,6 +20,27 @@ def chat_completion(messages: list[dict], model: str | None = None) -> str:
     return resp.choices[0].message.content or ""
 
 
+def chat_completion_json(messages: list[dict], model: str | None = None) -> dict[str, Any]:
+    """Return a parsed JSON object using OpenAI JSON mode.
+
+    Best-effort: returns {} if parsing fails.
+    """
+
+    client = get_client()
+    m = model or settings.openai_model
+    resp = client.chat.completions.create(
+        model=m,
+        messages=messages, # type: ignore
+        response_format={"type": "json_object"},
+    )
+    content = resp.choices[0].message.content or "{}"
+    try:
+        obj = json.loads(content)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def chat_completion_stream(messages: list[dict], model: str | None = None):
     """Yield incremental text deltas from the model.
 
@@ -29,9 +52,9 @@ def chat_completion_stream(messages: list[dict], model: str | None = None):
     m = model or settings.openai_model
     stream = client.chat.completions.create(
         model=m,
-        messages=messages,
+        messages=messages, # type: ignore
         stream=True,
-    )  # type: ignore
+    )
 
     for chunk in stream:
         try:

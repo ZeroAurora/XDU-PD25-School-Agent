@@ -43,9 +43,9 @@ class EventType(str, Enum):
 class ScheduleEvent(BaseModel):
     id: str
     title: str
-    date: str
-    startTime: str
-    endTime: str
+    date: int
+    startTime: int
+    endTime: int
     location: Optional[str] = None
     type: EventType
     description: Optional[str] = None
@@ -82,8 +82,10 @@ SAMPLE_EVENTS_FILE = Path(__file__).parent.parent.parent / "sample_data" / "samp
 
 def _event_to_text(event: ScheduleEvent) -> str:
     """Convert event to searchable text for RAG."""
+    st = f"{event.startTime:04d}"
+    et = f"{event.endTime:04d}"
     parts = [
-        f"{event.date} {event.startTime}-{event.endTime}",
+        f"{event.date} {st}-{et}",
         f"【{event.type}】{event.title}",
     ]
     if event.location:
@@ -101,7 +103,7 @@ def _event_to_metadata(event: ScheduleEvent) -> dict:
         "startTime": event.startTime,
         "endTime": event.endTime,
         "location": event.location,
-        "type": event.type,
+        "type": event.type.value if hasattr(event.type, "value") else str(event.type),
         "description": event.description,
         "source": "schedule",
     }

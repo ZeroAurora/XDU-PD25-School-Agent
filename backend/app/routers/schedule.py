@@ -1,10 +1,13 @@
 from datetime import datetime
 import uuid
+from functools import partial
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from ..services.retriever import get_retriever
+from ..services.time_constraints import build_chroma_where_from_query
 from pydantic import BaseModel
 from typing import Optional
+from anyio import to_thread
 
 from enum import Enum
 
@@ -23,9 +26,9 @@ router = APIRouter()
 class ScheduleEvent(BaseModel):
     id: str
     title: str
-    date: str
-    startTime: str
-    endTime: str
+    date: int
+    startTime: int
+    endTime: int
     location: Optional[str] = None
     type: EventType
     description: Optional[str] = None
@@ -33,9 +36,9 @@ class ScheduleEvent(BaseModel):
 
 class CreateEventRequest(BaseModel):
     title: str
-    date: str
-    startTime: str
-    endTime: str
+    date: int
+    startTime: int
+    endTime: int
     location: Optional[str] = None
     type: EventType
     description: Optional[str] = None
@@ -43,9 +46,9 @@ class CreateEventRequest(BaseModel):
 
 class UpdateEventRequest(BaseModel):
     title: Optional[str] = None
-    date: Optional[str] = None
-    startTime: Optional[str] = None
-    endTime: Optional[str] = None
+    date: Optional[int] = None
+    startTime: Optional[int] = None
+    endTime: Optional[int] = None
     location: Optional[str] = None
     type: Optional[EventType] = None
     description: Optional[str] = None
@@ -53,8 +56,10 @@ class UpdateEventRequest(BaseModel):
 
 def _event_to_text(event: ScheduleEvent) -> str:
     """Convert event to searchable text for RAG."""
+    st = f"{event.startTime:04d}"
+    et = f"{event.endTime:04d}"
     parts = [
-        f"{event.date} {event.startTime}-{event.endTime}",
+        f"{event.date} {st}-{et}",
         f"【{event.type.value}】{event.title}",
     ]
     if event.location:
@@ -72,10 +77,31 @@ def _event_to_metadata(event: ScheduleEvent) -> dict:
         "startTime": event.startTime,
         "endTime": event.endTime,
         "location": event.location,
-        "type": event.type,
+        "type": event.type.value,
         "description": event.description,
         "source": "schedule",
     }
+
+
+def _event_from_metadata(event_id: str, metadata: dict) -> ScheduleEvent | None:
+    try:
+        date = (metadata or {}).get("date")
+        start_time = (metadata or {}).get("startTime")
+        end_time = (metadata or {}).get("endTime")
+        if date is None or start_time is None or end_time is None:
+            return None
+        return ScheduleEvent(
+            id=event_id,
+            title=(metadata or {}).get("title", ""),
+            date=date,
+            startTime=start_time,
+            endTime=end_time,
+            location=(metadata or {}).get("location"),
+            type=EventType((metadata or {}).get("type", "announcement")),
+            description=(metadata or {}).get("description"),
+        )
+    except (ValueError, TypeError):
+        return None
 
 
 async def _ingest_to_rag(event: ScheduleEvent):
@@ -128,27 +154,15 @@ async def _get_all_events_from_rag() -> list[ScheduleEvent]:
             metadata = r.get("metadata", {})
             # Reconstruct event from metadata
             event_id = doc_id.replace("schedule:", "")
-            try:
-                event = ScheduleEvent(
-                    id=event_id,
-                    title=metadata.get("title", ""),
-                    date=metadata.get("date", ""),
-                    startTime=metadata.get("startTime", ""),
-                    endTime=metadata.get("endTime", ""),
-                    location=metadata.get("location"),
-                    type=EventType(metadata.get("type", "announcement")),
-                    description=metadata.get("description"),
-                )
+            event = _event_from_metadata(event_id, metadata)
+            if event is not None:
                 events.append(event)
-            except (ValueError, TypeError):
-                # Skip events with invalid metadata
-                continue
     
     return events
 
 
 @router.get("/events")
-async def list_events(date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)")):
+async def list_events(date: Optional[int] = Query(None, description="Filter by date (YYYYMMDD)")):
     """List all events from ChromaDB, optionally filtered by date."""
     events = await _get_all_events_from_rag()
     if date:
@@ -165,19 +179,7 @@ async def _get_event_from_rag(event_id: str) -> Optional[ScheduleEvent]:
         doc_id = r.get("id", "")
         if doc_id == f"schedule:{event_id}":
             metadata = r.get("metadata", {})
-            try:
-                return ScheduleEvent(
-                    id=event_id,
-                    title=metadata.get("title", ""),
-                    date=metadata.get("date", ""),
-                    startTime=metadata.get("startTime", ""),
-                    endTime=metadata.get("endTime", ""),
-                    location=metadata.get("location"),
-                    type=EventType(metadata.get("type", "announcement")),
-                    description=metadata.get("description"),
-                )
-            except (ValueError, TypeError):
-                return None
+            return _event_from_metadata(event_id, metadata)
     
     return None
 
@@ -230,22 +232,13 @@ async def delete_event(event_id: str):
 async def search_events(q: str = Query(..., description="Search query"), k: int = 5):
     """Search schedule events using RAG."""
     now = datetime.now()
-    current_date = now.strftime("%Y年%m月%d日")
-    weekday = ["一", "二", "三", "四", "五", "六", "日"][now.weekday()]
-    month = now.month
-    if 3 <= month <= 5:
-        season = "春季"
-    elif 6 <= month <= 8:
-        season = "夏季"
-    elif 9 <= month <= 11:
-        season = "秋季"
-    else:
-        season = "冬季"
-    query = (
-        f"当前时间：{current_date} 星期{weekday} {now.strftime('%H:%M')}（{season}），查询与当前时间最接近的活动。用户查询：{q}。"
+
+    where_filter, _constraints = await to_thread.run_sync(
+        partial(build_chroma_where_from_query, q, now=now)
     )
+
     retriever = get_retriever()
-    results = await retriever.query(query, k=k)
+    results = await retriever.query(q, k=k, where=where_filter)
 
     # Extract event IDs and fetch full event data from ChromaDB
     events = []
@@ -254,19 +247,8 @@ async def search_events(q: str = Query(..., description="Search query"), k: int 
         if doc_id.startswith("schedule:"):
             event_id = doc_id.replace("schedule:", "")
             metadata = r.get("metadata", {})
-            try:
-                event = ScheduleEvent(
-                    id=event_id,
-                    title=metadata.get("title", ""),
-                    date=metadata.get("date", ""),
-                    startTime=metadata.get("startTime", ""),
-                    endTime=metadata.get("endTime", ""),
-                    location=metadata.get("location"),
-                    type=EventType(metadata.get("type", "announcement")),
-                    description=metadata.get("description"),
-                )
+            event = _event_from_metadata(event_id, metadata)
+            if event is not None:
                 events.append(event)
-            except (ValueError, TypeError):
-                continue
 
     return {"events": events, "count": len(events)}

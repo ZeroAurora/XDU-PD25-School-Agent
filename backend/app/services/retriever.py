@@ -3,7 +3,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from ..config import settings
 from .embedding import Embedder
-from chromadb.errors import InvalidArgumentError
+from typing import Any, Optional
 
 
 class ChromaRetriever:
@@ -67,41 +67,22 @@ class ChromaRetriever:
         except Exception:
             return v
 
-    async def query(self, query_text: str, k: int = 5):
+    async def query(self, query_text: str, k: int = 5, where: Optional[dict[str, Any]] = None):
         embs_array = await self._get_embedder().embed([query_text])
         embs = self._ensure_pylist(embs_array[0])
-        try:
-            raw_result: dict = dict(self.collection.query(
-                query_embeddings=[embs],
-                n_results=k,
-                include=[
-                    "documents",
-                    "metadatas",
-                    "distances",
-                    "uris",
-                ],  # 不要 embeddings
-            ))
-            return self._transform_to_row_format(raw_result)
-        except InvalidArgumentError as e:
-            # 遇到维度不匹配：删除集合并重建，然后重试一次（空集合会返回空结果，不再报 384）
-            msg = str(e)
-            if "dimension" in msg or "embedding with dimension" in msg:
-                try:
-                    self.client.delete_collection(settings.chroma_collection)
-                except Exception:
-                    pass
-                self.collection = self.client.get_or_create_collection(
-                    settings.chroma_collection
-                )
-                embs_array = await self._get_embedder().embed([query_text])
-                embs = self._ensure_pylist(embs_array[0])
-                raw_result: dict = dict(self.collection.query(
-                    query_embeddings=[embs],
-                    n_results=k,
-                    include=["documents", "metadatas", "distances", "uris"],
-                ))
-                return self._transform_to_row_format(raw_result)
-            raise
+
+        raw_result: dict = dict(self.collection.query(
+            query_embeddings=[embs],
+            n_results=k,
+            include=[
+                "documents",
+                "metadatas",
+                "distances",
+                "uris",
+            ],
+            where=where,
+        ))
+        return self._transform_to_row_format(raw_result)
 
     def _transform_to_row_format(self, query_result: dict) -> list[dict]:
         """Transform column-first ChromaDB result to row-first list of objects."""
